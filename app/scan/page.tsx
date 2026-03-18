@@ -126,27 +126,27 @@ export default function ScanPage() {
       
       <main className="flex-1 overflow-auto p-4 md:p-6">
         {/* Scan Input */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <Card className="mb-4 md:mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
               <ScanLine className="h-5 w-5" />
               Escanear Producto
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs md:text-sm">
               Escanee un código de barras o ingrese el SKU/código manualmente
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleScan} className="flex gap-4">
+            <form onSubmit={handleScan} className="flex flex-col sm:flex-row gap-3">
               <Input
                 ref={inputRef}
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
-                placeholder="Escanear código de barras o ingresar SKU..."
-                className="flex-1 text-lg h-12"
+                placeholder="Código de barras o SKU..."
+                className="flex-1 text-base md:text-lg h-11 md:h-12"
                 autoFocus
               />
-              <Button type="submit" size="lg">
+              <Button type="submit" size="lg" className="h-11 md:h-12 w-full sm:w-auto">
                 Buscar
               </Button>
             </form>
@@ -155,22 +155,22 @@ export default function ScanPage() {
 
         {/* Status Messages */}
         {error && (
-          <div className="mb-6 flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
-            <AlertCircle className="h-5 w-5" />
+          <div className="mb-4 md:mb-6 flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 md:p-4 text-destructive text-sm">
+            <AlertCircle className="h-4 w-4 md:h-5 md:w-5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mb-6 flex items-center gap-2 rounded-lg border border-green-500/50 bg-green-500/10 p-4 text-green-500">
-            <CheckCircle2 className="h-5 w-5" />
+          <div className="mb-4 md:mb-6 flex items-center gap-2 rounded-lg border border-green-500/50 bg-green-500/10 p-3 md:p-4 text-green-500 text-sm">
+            <CheckCircle2 className="h-4 w-4 md:h-5 md:w-5 shrink-0" />
             <span>{success}</span>
           </div>
         )}
 
         {/* Product Info */}
         {foundProduct && (
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -245,46 +245,46 @@ export default function ScanPage() {
               <CardContent className="grid gap-3">
                 <Button
                   size="lg"
-                  className="h-16 justify-start gap-4 text-lg"
+                  className="h-14 md:h-16 justify-start gap-3 md:gap-4 text-base md:text-lg"
                   variant="outline"
                   onClick={() => setActionDialog({ open: true, type: "in" })}
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-                    <Plus className="h-5 w-5 text-green-500" />
+                  <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-green-500/10 shrink-0">
+                    <Plus className="h-4 w-4 md:h-5 md:w-5 text-green-500" />
                   </div>
-                  <div className="text-left">
-                    <p className="font-semibold">Entrada de Stock</p>
-                    <p className="text-sm text-muted-foreground">Registrar ingreso de mercadería</p>
+                  <div className="text-left min-w-0">
+                    <p className="font-semibold text-sm md:text-base">Entrada de Stock</p>
+                    <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Registrar ingreso</p>
                   </div>
                 </Button>
 
                 <Button
                   size="lg"
-                  className="h-16 justify-start gap-4 text-lg"
+                  className="h-14 md:h-16 justify-start gap-3 md:gap-4 text-base md:text-lg"
                   variant="outline"
                   onClick={() => setActionDialog({ open: true, type: "out" })}
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
-                    <Minus className="h-5 w-5 text-red-500" />
+                  <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-red-500/10 shrink-0">
+                    <Minus className="h-4 w-4 md:h-5 md:w-5 text-red-500" />
                   </div>
-                  <div className="text-left">
-                    <p className="font-semibold">Salida de Stock</p>
-                    <p className="text-sm text-muted-foreground">Registrar venta o egreso</p>
+                  <div className="text-left min-w-0">
+                    <p className="font-semibold text-sm md:text-base">Salida de Stock</p>
+                    <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Registrar venta o egreso</p>
                   </div>
                 </Button>
 
                 <Button
                   size="lg"
-                  className="h-16 justify-start gap-4 text-lg"
+                  className="h-14 md:h-16 justify-start gap-3 md:gap-4 text-base md:text-lg"
                   variant="outline"
                   onClick={() => setActionDialog({ open: true, type: "transfer" })}
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
-                    <ArrowLeftRight className="h-5 w-5 text-blue-500" />
+                  <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-blue-500/10 shrink-0">
+                    <ArrowLeftRight className="h-4 w-4 md:h-5 md:w-5 text-blue-500" />
                   </div>
-                  <div className="text-left">
-                    <p className="font-semibold">Transferir</p>
-                    <p className="text-sm text-muted-foreground">Mover entre depósitos</p>
+                  <div className="text-left min-w-0">
+                    <p className="font-semibold text-sm md:text-base">Transferir</p>
+                    <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Mover entre depósitos</p>
                   </div>
                 </Button>
               </CardContent>

@@ -95,46 +95,46 @@ export default function WarehousesPage() {
         }}
       />
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
         {/* Tarjetas de Resumen */}
-        <div className="mb-6 grid gap-4 md:grid-cols-3">
+        <div className="mb-4 md:mb-6 grid gap-3 grid-cols-1 sm:grid-cols-3">
           <Card>
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="rounded-lg bg-secondary p-3">
-                <WarehouseIcon className="h-5 w-5 text-muted-foreground" />
+            <CardContent className="flex items-center gap-3 p-3 md:p-4">
+              <div className="rounded-lg bg-secondary p-2 md:p-3 shrink-0">
+                <WarehouseIcon className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Ubicaciones Activas</p>
-                <p className="text-2xl font-semibold">{activeWarehouses} / {warehouses.length}</p>
+              <div className="min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground truncate">Ubicaciones</p>
+                <p className="text-lg md:text-2xl font-semibold">{activeWarehouses} / {warehouses.length}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="rounded-lg bg-secondary p-3">
-                <Package className="h-5 w-5 text-muted-foreground" />
+            <CardContent className="flex items-center gap-3 p-3 md:p-4">
+              <div className="rounded-lg bg-secondary p-2 md:p-3 shrink-0">
+                <Package className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total de Unidades</p>
-                <p className="text-2xl font-semibold">{formatNumber(totalStock)}</p>
+              <div className="min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground truncate">Total Unidades</p>
+                <p className="text-lg md:text-2xl font-semibold">{formatNumber(totalStock)}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="rounded-lg bg-secondary p-3">
-                <DollarSign className="h-5 w-5 text-muted-foreground" />
+            <CardContent className="flex items-center gap-3 p-3 md:p-4">
+              <div className="rounded-lg bg-secondary p-2 md:p-3 shrink-0">
+                <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Valor Total</p>
-                <p className="text-2xl font-semibold">{formatCurrency(totalValue)}</p>
+              <div className="min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground truncate">Valor Total</p>
+                <p className="text-lg md:text-2xl font-semibold">{formatCurrency(totalValue)}</p>
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Grilla de Depósitos */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {warehouses.map((warehouse) => (
             <Card key={warehouse.id} className={cn("group", !warehouse.isActive && "opacity-60")}>
               <CardHeader className="flex flex-row items-start justify-between pb-2">
