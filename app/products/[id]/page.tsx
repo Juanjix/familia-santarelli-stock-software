@@ -266,6 +266,17 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                         <p className="font-medium">{product.weight} g</p>
                       </div>
                     </div>
+                    {product.supplierName && (
+                      <div className="flex items-start gap-3">
+                        <div className="rounded-lg bg-secondary p-2">
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Proveedor</p>
+                          <p className="font-medium">{product.supplierName}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">

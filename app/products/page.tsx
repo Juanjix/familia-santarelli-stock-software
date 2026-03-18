@@ -44,7 +44,7 @@ function generateBarcode(): string {
 }
 
 export default function ProductsPage() {
-  const { products, addProduct, updateProduct, toggleProductStatus, loading } = useInventory()
+  const { products, suppliers, addProduct, updateProduct, toggleProductStatus, addSupplier, loading } = useInventory()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("Todos")
   const [material, setMaterial] = useState("Todos")
@@ -65,6 +65,9 @@ export default function ProductsPage() {
   const [formWeight, setFormWeight] = useState("")
   const [formMinStock, setFormMinStock] = useState("5")
   const [formActive, setFormActive] = useState(true)
+  const [formSupplierId, setFormSupplierId] = useState("")
+  const [newSupplierName, setNewSupplierName] = useState("")
+  const [showNewSupplierInput, setShowNewSupplierInput] = useState(false)
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -105,6 +108,9 @@ export default function ProductsPage() {
     setFormWeight("")
     setFormMinStock("5")
     setFormActive(true)
+    setFormSupplierId("")
+    setNewSupplierName("")
+    setShowNewSupplierInput(false)
     setEditingProduct(null)
   }
 
@@ -123,6 +129,9 @@ export default function ProductsPage() {
     setFormWeight(String(product.weight || 0))
     setFormMinStock(String(product.min_stock || 5))
     setFormActive(product.is_active !== false)
+    setFormSupplierId(product.supplier_id || "")
+    setShowNewSupplierInput(false)
+    setNewSupplierName("")
     setDialogOpen(true)
   }
 
@@ -131,6 +140,15 @@ export default function ProductsPage() {
     
     setSaving(true)
     try {
+      // Handle new supplier creation if needed
+      let supplierId = formSupplierId || null
+      if (showNewSupplierInput && newSupplierName.trim()) {
+        const newSupplier = await addSupplier({ name: newSupplierName.trim() })
+        if (newSupplier) {
+          supplierId = newSupplier.id
+        }
+      }
+      
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
           name: formName,
@@ -141,6 +159,7 @@ export default function ProductsPage() {
           weight: parseFloat(formWeight) || null,
           min_stock: parseInt(formMinStock) || 5,
           is_active: formActive,
+          supplier_id: supplierId,
         })
       } else {
         await addProduct({
@@ -154,6 +173,7 @@ export default function ProductsPage() {
           cost_price: parseFloat(formCostPrice) || 0,
           min_stock: parseInt(formMinStock) || 5,
           is_active: formActive,
+          supplier_id: supplierId,
         })
       }
 
@@ -404,6 +424,55 @@ export default function ProductsPage() {
               </div>
             </div>
             
+            <div className="grid gap-2">
+              <Label>Proveedor</Label>
+              {!showNewSupplierInput ? (
+                <div className="flex gap-2">
+                  <Select value={formSupplierId || "none"} onValueChange={(val) => setFormSupplierId(val === "none" ? "" : val)}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Seleccionar proveedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin proveedor</SelectItem>
+                      {suppliers.map(supplier => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowNewSupplierInput(true)}
+                  >
+                    Nuevo
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    value={newSupplierName}
+                    onChange={(e) => setNewSupplierName(e.target.value)}
+                    placeholder="Nombre del proveedor"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowNewSupplierInput(false)
+                      setNewSupplierName("")
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center justify-between">
               <div>
                 <Label>Producto Activo</Label>
