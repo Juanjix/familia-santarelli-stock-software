@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -31,7 +33,6 @@ const ITEMS_PER_PAGE = 20
 
 const categories = ["Anillos", "Collares", "Pulseras", "Aros", "Cadenas", "Relojes", "Accesorios"]
 const materials = ["Oro", "Plata", "Acero", "Mixto"]
-const pricingTypes = ["Fijo", "Base oro", "Base plata", "Base USD", "Por peso", "Personalizado"]
 
 function generateSKU(category: string): string {
   const prefix = category.substring(0, 3).toUpperCase()
@@ -43,7 +44,7 @@ function generateBarcode(): string {
 }
 
 export default function ProductsPage() {
-  const { products, addProduct, updateProduct, toggleProductStatus } = useInventory()
+  const { products, addProduct, updateProduct, toggleProductStatus, loading } = useInventory()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("Todos")
   const [material, setMaterial] = useState("Todos")
@@ -53,14 +54,16 @@ export default function ProductsPage() {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [saving, setSaving] = useState(false)
   
   // Form state
   const [formName, setFormName] = useState("")
   const [formCategory, setFormCategory] = useState("")
   const [formMaterial, setFormMaterial] = useState("")
   const [formPrice, setFormPrice] = useState("")
+  const [formCostPrice, setFormCostPrice] = useState("")
   const [formWeight, setFormWeight] = useState("")
-  const [formPricingType, setFormPricingType] = useState("")
+  const [formMinStock, setFormMinStock] = useState("5")
   const [formActive, setFormActive] = useState(true)
 
   const filteredProducts = useMemo(() => {
@@ -69,7 +72,7 @@ export default function ProductsPage() {
         search === "" ||
         product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.sku.toLowerCase().includes(search.toLowerCase()) ||
-        product.barcode.includes(search)
+        (product.barcode && product.barcode.includes(search))
       
       const matchesCategory = category === "Todos" || product.category === category
       const matchesMaterial = material === "Todos" || product.material === material
@@ -98,8 +101,9 @@ export default function ProductsPage() {
     setFormCategory("")
     setFormMaterial("")
     setFormPrice("")
+    setFormCostPrice("")
     setFormWeight("")
-    setFormPricingType("")
+    setFormMinStock("5")
     setFormActive(true)
     setEditingProduct(null)
   }
@@ -113,49 +117,82 @@ export default function ProductsPage() {
     setEditingProduct(product)
     setFormName(product.name)
     setFormCategory(product.category)
-    setFormMaterial(product.material)
-    setFormPrice(String(product.price))
-    setFormWeight(String(product.weight))
-    setFormPricingType(product.pricingType)
-    setFormActive(product.isActive)
+    setFormMaterial(product.material || "")
+    setFormPrice(String(product.sell_price || product.price || 0))
+    setFormCostPrice(String(product.cost_price || 0))
+    setFormWeight(String(product.weight || 0))
+    setFormMinStock(String(product.min_stock || 5))
+    setFormActive(product.is_active !== false)
     setDialogOpen(true)
   }
 
-  const handleSave = () => {
-    if (!formName || !formCategory || !formMaterial || !formPrice) return
+  const handleSave = async () => {
+    if (!formName || !formCategory || !formPrice) return
+    
+    setSaving(true)
+    try {
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, {
+          name: formName,
+          category: formCategory,
+          material: formMaterial || null,
+          sell_price: parseFloat(formPrice),
+          cost_price: parseFloat(formCostPrice) || 0,
+          weight: parseFloat(formWeight) || null,
+          min_stock: parseInt(formMinStock) || 5,
+          is_active: formActive,
+        })
+      } else {
+        await addProduct({
+          name: formName,
+          sku: generateSKU(formCategory),
+          category: formCategory,
+          material: formMaterial || null,
+          weight: parseFloat(formWeight) || null,
+          barcode: generateBarcode(),
+          sell_price: parseFloat(formPrice),
+          cost_price: parseFloat(formCostPrice) || 0,
+          min_stock: parseInt(formMinStock) || 5,
+          is_active: formActive,
+        })
+      }
 
-    if (editingProduct) {
-      updateProduct(editingProduct.id, {
-        name: formName,
-        category: formCategory,
-        material: formMaterial,
-        price: parseFloat(formPrice),
-        weight: parseFloat(formWeight) || 0,
-        pricingType: formPricingType,
-        isActive: formActive,
-      })
-    } else {
-      addProduct({
-        name: formName,
-        sku: generateSKU(formCategory),
-        category: formCategory,
-        material: formMaterial,
-        weight: parseFloat(formWeight) || 0,
-        barcode: generateBarcode(),
-        pricingType: formPricingType,
-        stockStatus: "out_of_stock",
-        isActive: formActive,
-        totalStock: 0,
-        price: parseFloat(formPrice),
-      })
+      setDialogOpen(false)
+      resetForm()
+    } finally {
+      setSaving(false)
     }
-
-    setDialogOpen(false)
-    resetForm()
   }
 
   const handleToggleStatus = (productId: string) => {
     toggleProductStatus(productId)
+  }
+
+  if (loading) {
+    return (
+      <>
+        <Header
+          title="Productos"
+          description="Cargando..."
+        />
+        <div className="flex-1 overflow-auto p-4 md:p-6">
+          <div className="space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Card>
+              <CardContent className="p-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex gap-4 py-3 border-b last:border-0">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </>
+    )
   }
 
   return (
@@ -320,7 +357,7 @@ export default function ProductsPage() {
             
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label>Precio (ARS)</Label>
+                <Label>Precio Venta (ARS)</Label>
                 <Input
                   type="number"
                   min="0"
@@ -330,6 +367,19 @@ export default function ProductsPage() {
                 />
               </div>
               
+              <div className="grid gap-2">
+                <Label>Precio Costo (ARS)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={formCostPrice}
+                  onChange={(e) => setFormCostPrice(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Peso (gr)</Label>
                 <Input
@@ -341,20 +391,17 @@ export default function ProductsPage() {
                   placeholder="0"
                 />
               </div>
-            </div>
-            
-            <div className="grid gap-2">
-              <Label>Tipo de Precio</Label>
-              <Select value={formPricingType} onValueChange={setFormPricingType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pricingTypes.map(type => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+              <div className="grid gap-2">
+                <Label>Stock Mínimo</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={formMinStock}
+                  onChange={(e) => setFormMinStock(e.target.value)}
+                  placeholder="5"
+                />
+              </div>
             </div>
             
             <div className="flex items-center justify-between">
@@ -377,9 +424,9 @@ export default function ProductsPage() {
             </Button>
             <Button 
               onClick={handleSave}
-              disabled={!formName || !formCategory || !formMaterial || !formPrice}
+              disabled={!formName || !formCategory || !formPrice || saving}
             >
-              {editingProduct ? "Guardar Cambios" : "Crear Producto"}
+              {saving ? "Guardando..." : editingProduct ? "Guardar Cambios" : "Crear Producto"}
             </Button>
           </DialogFooter>
         </DialogContent>
