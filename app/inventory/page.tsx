@@ -50,12 +50,12 @@ export default function InventoryPage() {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.sku.toLowerCase().includes(search.toLowerCase()) ||
-        product.barcode.includes(search)
+        (product.barcode || "").includes(search)
       
       if (warehouseFilter === "all") return matchesSearch
       
-      const stockByWarehouse = getStockByWarehouse(product.id)
-      return matchesSearch && stockByWarehouse.some(s => s.warehouseId === warehouseFilter && s.quantity > 0)
+      const stockByWarehouse = getStockByWarehouse(product.id) || []
+      return matchesSearch && Array.isArray(stockByWarehouse) && stockByWarehouse.some(s => s.warehouseId === warehouseFilter && s.quantity > 0)
     })
   }, [products, search, warehouseFilter, getStockByWarehouse])
 
@@ -128,7 +128,7 @@ export default function InventoryPage() {
         {/* Mobile Card View */}
         <div className="space-y-3 md:hidden">
           {filteredProducts.slice(0, 50).map((product) => {
-            const stockByWarehouse = getStockByWarehouse(product.id)
+            const stockByWarehouse = getStockByWarehouse(product.id) || []
             return (
               <Card key={product.id}>
                 <CardContent className="p-4">
@@ -150,17 +150,17 @@ export default function InventoryPage() {
                       }
                       className="shrink-0"
                     >
-                      {product.totalStock}
+                      {product.total_stock ?? product.totalStock ?? 0}
                     </Badge>
                   </div>
                   
                   <div className="flex flex-wrap gap-1 mb-3">
-                    {stockByWarehouse.map(stock => (
+                    {Array.isArray(stockByWarehouse) && stockByWarehouse.map(stock => (
                       <Badge key={stock.warehouseId} variant="outline" className="text-xs">
                         {stock.warehouseName}: {stock.quantity}
                       </Badge>
                     ))}
-                    {stockByWarehouse.length === 0 && (
+                    {(!Array.isArray(stockByWarehouse) || stockByWarehouse.length === 0) && (
                       <span className="text-xs text-muted-foreground">Sin stock asignado</span>
                     )}
                   </div>
@@ -215,7 +215,7 @@ export default function InventoryPage() {
             </TableHeader>
             <TableBody>
               {filteredProducts.slice(0, 50).map((product) => {
-                const stockByWarehouse = getStockByWarehouse(product.id)
+                const stockByWarehouse = getStockByWarehouse(product.id) || []
                 return (
                   <TableRow key={product.id}>
                     <TableCell>
@@ -233,16 +233,16 @@ export default function InventoryPage() {
                       {product.sku}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      {product.totalStock}
+                      {product.total_stock ?? product.totalStock ?? 0}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {stockByWarehouse.map(stock => (
+                        {Array.isArray(stockByWarehouse) && stockByWarehouse.map(stock => (
                           <Badge key={stock.warehouseId} variant="outline" className="text-xs">
                             {stock.warehouseName}: {stock.quantity}
                           </Badge>
                         ))}
-                        {stockByWarehouse.length === 0 && (
+                        {(!Array.isArray(stockByWarehouse) || stockByWarehouse.length === 0) && (
                           <span className="text-xs text-muted-foreground">Sin stock</span>
                         )}
                       </div>

@@ -62,6 +62,7 @@ interface InventoryContextType {
   warehouses: Warehouse[]
   movements: Movement[]
   coupons: Coupon[]
+  productStock: Map<string, StockByWarehouse[]>
   loading: boolean
   error: string | null
   refreshData: () => Promise<void>
@@ -71,7 +72,7 @@ interface InventoryContextType {
   toggleProductStatus: (id: string) => Promise<void>
   adjustStock: (productId: string, warehouseId: string, quantity: number, type: "in" | "out" | "adjustment", notes?: string) => Promise<void>
   transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes?: string) => Promise<void>
-  getStockByWarehouse: (productId: string) => Promise<StockByWarehouse[]>
+  getStockByWarehouse: (productId: string) => StockByWarehouse[]
   getProductById: (id: string) => Product | undefined
   addWarehouse: (warehouse: Partial<Warehouse>) => Promise<void>
   updateWarehouse: (id: string, updates: Partial<Warehouse>) => Promise<void>
@@ -86,6 +87,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
   const [coupons, setCoupons] = useState<Coupon[]>([])
+  const [productStock, setProductStock] = useState<Map<string, StockByWarehouse[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -97,7 +99,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     
     try {
       // Fetch all data in parallel
-      const [productsRes, warehousesRes, movementsRes, couponsRes] = await Promise.all([
+      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes] = await Promise.all([
         supabase.from("products").select("*").order("created_at", { ascending: false }),
         supabase.from("warehouses").select("*").order("name"),
         supabase.from("movements").select(`
@@ -110,17 +112,40 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           *,
           original_products:original_product_id(name)
         `).order("created_at", { ascending: false }),
+        supabase.from("product_stock").select(`
+          product_id,
+          quantity,
+          warehouse_id,
+          warehouses(name)
+        `).gt("quantity", 0),
       ])
 
       if (productsRes.error) throw productsRes.error
       if (warehousesRes.error) throw warehousesRes.error
       if (movementsRes.error) throw movementsRes.error
       if (couponsRes.error) throw couponsRes.error
+      if (stockRes.error) throw stockRes.error
 
       setProducts((productsRes.data || []).map(normalizeProduct))
       setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
       setMovements((movementsRes.data || []).map(normalizeMovement))
       setCoupons((couponsRes.data || []).map(normalizeCoupon))
+      
+      // Build product stock map
+      const stockMap = new Map<string, StockByWarehouse[]>()
+      for (const s of stockRes.data || []) {
+        const productId = s.product_id
+        const stockItem: StockByWarehouse = {
+          warehouseId: s.warehouse_id,
+          warehouseName: (s.warehouses as { name: string } | null)?.name || "",
+          quantity: s.quantity,
+        }
+        if (!stockMap.has(productId)) {
+          stockMap.set(productId, [])
+        }
+        stockMap.get(productId)!.push(stockItem)
+      }
+      setProductStock(stockMap)
     } catch (err) {
       console.error("Error fetching data:", err)
       setError(err instanceof Error ? err.message : "Error al cargar datos")
@@ -137,28 +162,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return products.find(p => p.id === id)
   }, [products])
 
-  const getStockByWarehouse = useCallback(async (productId: string): Promise<StockByWarehouse[]> => {
-    const { data, error } = await supabase
-      .from("product_stock")
-      .select(`
-        quantity,
-        warehouse_id,
-        warehouses(name)
-      `)
-      .eq("product_id", productId)
-      .gt("quantity", 0)
-    
-    if (error) {
-      console.error("Error fetching stock:", error)
-      return []
-    }
-
-    return (data || []).map((s: { quantity: number; warehouse_id: string; warehouses: { name: string } | null }) => ({
-      warehouseId: s.warehouse_id,
-      warehouseName: s.warehouses?.name || "",
-      quantity: s.quantity,
-    }))
-  }, [supabase])
+  const getStockByWarehouse = useCallback((productId: string): StockByWarehouse[] => {
+    return productStock.get(productId) || []
+  }, [productStock])
 
   const addProduct = useCallback(async (product: Partial<Product>): Promise<Product | null> => {
     const { data, error } = await supabase
@@ -380,6 +386,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       warehouses,
       movements,
       coupons,
+      productStock,
       loading,
       error,
       refreshData,
