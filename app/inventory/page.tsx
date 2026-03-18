@@ -6,6 +6,7 @@ import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -95,38 +96,112 @@ export default function InventoryPage() {
     : null
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
       <Header title="Inventario" />
       
-      <main className="flex-1 p-6">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 items-center gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nombre, SKU o código de barras..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filtrar por depósito" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los depósitos</SelectItem>
-                {warehouses.filter(w => w.isActive).map(warehouse => (
-                  <SelectItem key={warehouse.id} value={warehouse.id}>
-                    {warehouse.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <main className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="mb-4 md:mb-6 flex flex-col gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nombre, SKU o código..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
+          <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+            <SelectTrigger className="w-full sm:w-[200px]">
+              <SelectValue placeholder="Filtrar por depósito" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los depósitos</SelectItem>
+              {warehouses.filter(w => w.isActive).map(warehouse => (
+                <SelectItem key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="rounded-lg border border-border bg-card">
+        {/* Mobile Card View */}
+        <div className="space-y-3 md:hidden">
+          {filteredProducts.slice(0, 50).map((product) => {
+            const stockByWarehouse = getStockByWarehouse(product.id)
+            return (
+              <Card key={product.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted shrink-0">
+                      <Package className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-foreground truncate">{product.name}</p>
+                      <p className="text-xs text-muted-foreground">{product.sku}</p>
+                    </div>
+                    <Badge
+                      variant={
+                        product.stockStatus === "in_stock"
+                          ? "default"
+                          : product.stockStatus === "low_stock"
+                          ? "secondary"
+                          : "destructive"
+                      }
+                      className="shrink-0"
+                    >
+                      {product.totalStock}
+                    </Badge>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {stockByWarehouse.map(stock => (
+                      <Badge key={stock.warehouseId} variant="outline" className="text-xs">
+                        {stock.warehouseName}: {stock.quantity}
+                      </Badge>
+                    ))}
+                    {stockByWarehouse.length === 0 && (
+                      <span className="text-xs text-muted-foreground">Sin stock asignado</span>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-2 pt-2 border-t border-border">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-9"
+                      onClick={() => openAdjustDialog(product.id, "in")}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Entrada
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-9"
+                      onClick={() => openAdjustDialog(product.id, "out")}
+                    >
+                      <Minus className="h-4 w-4 mr-1" />
+                      Salida
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-9"
+                      onClick={() => openTransferDialog(product.id)}
+                    >
+                      <ArrowLeftRight className="h-4 w-4 mr-1" />
+                      Mover
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block rounded-lg border border-border bg-card overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -233,7 +308,7 @@ export default function InventoryPage() {
 
       {/* Adjust Stock Dialog */}
       <Dialog open={adjustDialog.open} onOpenChange={(open) => { setAdjustDialog({ ...adjustDialog, open }); if (!open) resetForm(); }}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
               {adjustDialog.type === "in" ? "Entrada de Stock" : adjustDialog.type === "out" ? "Salida de Stock" : "Ajuste de Stock"}
@@ -277,11 +352,11 @@ export default function InventoryPage() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setAdjustDialog({ open: false, productId: null, type: "in" }); resetForm(); }}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => { setAdjustDialog({ open: false, productId: null, type: "in" }); resetForm(); }} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleAdjust} disabled={!selectedWarehouse || !quantity}>
+            <Button onClick={handleAdjust} disabled={!selectedWarehouse || !quantity} className="w-full sm:w-auto">
               Confirmar
             </Button>
           </DialogFooter>
@@ -290,7 +365,7 @@ export default function InventoryPage() {
 
       {/* Transfer Dialog */}
       <Dialog open={transferDialog.open} onOpenChange={(open) => { setTransferDialog({ ...transferDialog, open }); if (!open) resetForm(); }}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Transferir Stock</DialogTitle>
             <DialogDescription>
@@ -347,11 +422,11 @@ export default function InventoryPage() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setTransferDialog({ open: false, productId: null }); resetForm(); }}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => { setTransferDialog({ open: false, productId: null }); resetForm(); }} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleTransfer} disabled={!fromWarehouse || !toWarehouse || !quantity}>
+            <Button onClick={handleTransfer} disabled={!fromWarehouse || !toWarehouse || !quantity} className="w-full sm:w-auto">
               Transferir
             </Button>
           </DialogFooter>

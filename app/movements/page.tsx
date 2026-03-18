@@ -5,6 +5,7 @@ import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -76,37 +77,91 @@ export default function MovementsPage() {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
       <Header title="Movimientos" />
       
-      <main className="flex-1 p-6">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 items-center gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por producto..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Tipo de movimiento" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los tipos</SelectItem>
-                <SelectItem value="entry">Entradas</SelectItem>
-                <SelectItem value="exit">Salidas</SelectItem>
-                <SelectItem value="transfer">Transferencias</SelectItem>
-                <SelectItem value="adjustment">Ajustes</SelectItem>
-              </SelectContent>
-            </Select>
+      <main className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="mb-4 md:mb-6 flex flex-col gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por producto..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Tipo de movimiento" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los tipos</SelectItem>
+              <SelectItem value="entry">Entradas</SelectItem>
+              <SelectItem value="exit">Salidas</SelectItem>
+              <SelectItem value="transfer">Transferencias</SelectItem>
+              <SelectItem value="adjustment">Ajustes</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="rounded-lg border border-border bg-card">
+        {/* Mobile Card View */}
+        <div className="space-y-3 md:hidden">
+          {filteredMovements.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No se encontraron movimientos
+            </div>
+          ) : (
+            filteredMovements.map((movement) => (
+              <Card key={movement.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      {movementTypeIcons[movement.type]}
+                      <Badge
+                        variant={
+                          movement.type === "entry"
+                            ? "default"
+                            : movement.type === "exit"
+                            ? "destructive"
+                            : movement.type === "transfer"
+                            ? "secondary"
+                            : "outline"
+                        }
+                      >
+                        {movementTypeLabels[movement.type]}
+                      </Badge>
+                    </div>
+                    <span className={`font-semibold text-lg ${movement.quantity > 0 ? "text-green-500" : "text-red-500"}`}>
+                      {movement.quantity > 0 ? "+" : ""}{movement.quantity}
+                    </span>
+                  </div>
+                  
+                  <p className="font-medium text-foreground mb-1">{movement.productName}</p>
+                  
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mb-2">
+                    {movement.fromWarehouse && <span>De: {movement.fromWarehouse}</span>}
+                    {movement.toWarehouse && <span>A: {movement.toWarehouse}</span>}
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
+                    <span>{getRelativeTime(movement.date)}</span>
+                    <span>{movement.user}</span>
+                  </div>
+                  
+                  {movement.notes && (
+                    <p className="text-xs text-muted-foreground mt-2 italic truncate">
+                      {movement.notes}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block rounded-lg border border-border bg-card overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">

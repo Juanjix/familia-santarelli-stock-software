@@ -121,10 +121,10 @@ export default function ScanPage() {
   const stockByWarehouse = foundProduct ? getStockByWarehouse(foundProduct.id) : []
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
       <Header title="Escanear" />
       
-      <main className="flex-1 p-6">
+      <main className="flex-1 overflow-auto p-4 md:p-6">
         {/* Scan Input */}
         <Card className="mb-6">
           <CardHeader>

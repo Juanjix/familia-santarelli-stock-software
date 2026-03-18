@@ -169,8 +169,8 @@ export default function ProductsPage() {
         }}
       />
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="space-y-6">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="space-y-4 md:space-y-6">
           <ProductsFilters
             search={search}
             onSearchChange={(value) => {
@@ -202,23 +202,24 @@ export default function ProductsPage() {
           />
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground text-center sm:text-left">
                 Mostrando {((currentPage - 1) * ITEMS_PER_PAGE) + 1} a{" "}
                 {Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)} de{" "}
                 {filteredProducts.length.toLocaleString("es-AR")} productos
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
+                  className="h-9 px-3"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Anterior
+                  <span className="hidden sm:inline ml-1">Anterior</span>
                 </Button>
-                <div className="flex items-center gap-1">
+                <div className="hidden sm:flex items-center gap-1">
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     let pageNum: number
                     if (totalPages <= 5) {
@@ -235,7 +236,7 @@ export default function ProductsPage() {
                         key={pageNum}
                         variant={currentPage === pageNum ? "default" : "ghost"}
                         size="sm"
-                        className="w-9"
+                        className="w-9 h-9"
                         onClick={() => setCurrentPage(pageNum)}
                       >
                         {pageNum}
@@ -243,13 +244,17 @@ export default function ProductsPage() {
                     )
                   })}
                 </div>
+                <span className="sm:hidden text-sm text-muted-foreground px-2">
+                  {currentPage} / {totalPages}
+                </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
+                  className="h-9 px-3"
                 >
-                  Siguiente
+                  <span className="hidden sm:inline mr-1">Siguiente</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>

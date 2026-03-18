@@ -80,8 +80,8 @@ export default function DashboardPage() {
     <>
       <Header title="Panel" description="Resumen de tu inventario" />
       
-      <div className="flex-1 overflow-auto p-6">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Total de Productos"
             value={formatNumber(dashboardStats.totalProducts)}
@@ -112,7 +112,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="mt-4 md:mt-6 grid gap-4 md:gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium">Movimientos Recientes</CardTitle>
@@ -173,13 +173,13 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-4 md:mt-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium">Stock por Categoría</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
                 {dashboardStats.stockByCategory.map((item) => (
                   <div key={item.category} className="flex items-center justify-between rounded-lg bg-secondary/50 p-4">
                     <div>
