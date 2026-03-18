@@ -428,12 +428,12 @@ export default function ProductsPage() {
               <Label>Proveedor</Label>
               {!showNewSupplierInput ? (
                 <div className="flex gap-2">
-                  <Select value={formSupplierId} onValueChange={setFormSupplierId}>
+                  <Select value={formSupplierId || "none"} onValueChange={(val) => setFormSupplierId(val === "none" ? "" : val)}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Seleccionar proveedor" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sin proveedor</SelectItem>
+                      <SelectItem value="none">Sin proveedor</SelectItem>
                       {suppliers.map(supplier => (
                         <SelectItem key={supplier.id} value={supplier.id}>
                           {supplier.name}
