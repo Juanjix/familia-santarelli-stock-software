@@ -2,14 +2,16 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier } from "./types"
 
 // Helper to normalize product for UI
-function normalizeProduct(p: Product): Product {
+function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
   return {
     ...p,
     stockStatus: p.total_stock === 0 ? "out_of_stock" : p.total_stock < (p.min_stock || 5) ? "low_stock" : "in_stock",
     price: p.sell_price,
+    supplier: p.suppliers || undefined,
+    supplierName: p.suppliers?.name || undefined,
   }
 }
 
@@ -62,6 +64,7 @@ interface InventoryContextType {
   warehouses: Warehouse[]
   movements: Movement[]
   coupons: Coupon[]
+  suppliers: Supplier[]
   productStock: Map<string, StockByWarehouse[]>
   loading: boolean
   error: string | null
@@ -76,6 +79,7 @@ interface InventoryContextType {
   getProductById: (id: string) => Product | undefined
   addWarehouse: (warehouse: Partial<Warehouse>) => Promise<void>
   updateWarehouse: (id: string, updates: Partial<Warehouse>) => Promise<void>
+  addSupplier: (supplier: Partial<Supplier>) => Promise<Supplier | null>
   addCoupon: (coupon: Partial<Coupon>) => Promise<void>
   useCoupon: (id: string) => Promise<void>
 }
@@ -87,6 +91,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
   const [coupons, setCoupons] = useState<Coupon[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [productStock, setProductStock] = useState<Map<string, StockByWarehouse[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -99,8 +104,11 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     
     try {
       // Fetch all data in parallel
-      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes] = await Promise.all([
-        supabase.from("products").select("*").order("created_at", { ascending: false }),
+      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes] = await Promise.all([
+        supabase.from("products").select(`
+          *,
+          suppliers(id, name, contact, created_at)
+        `).order("created_at", { ascending: false }),
         supabase.from("warehouses").select("*").order("name"),
         supabase.from("movements").select(`
           *,
@@ -118,6 +126,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           warehouse_id,
           warehouses(name)
         `).gt("quantity", 0),
+        supabase.from("suppliers").select("*").order("name"),
       ])
 
       if (productsRes.error) throw productsRes.error
@@ -125,11 +134,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       if (movementsRes.error) throw movementsRes.error
       if (couponsRes.error) throw couponsRes.error
       if (stockRes.error) throw stockRes.error
+      if (suppliersRes.error) throw suppliersRes.error
 
       setProducts((productsRes.data || []).map(normalizeProduct))
       setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
       setMovements((movementsRes.data || []).map(normalizeMovement))
       setCoupons((couponsRes.data || []).map(normalizeCoupon))
+      setSuppliers(suppliersRes.data || [])
       
       // Build product stock map
       const stockMap = new Map<string, StockByWarehouse[]>()
@@ -182,8 +193,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         min_stock: product.min_stock || 5,
         total_stock: 0,
         is_active: product.is_active !== false,
+        supplier_id: product.supplier_id || null,
       })
-      .select()
+      .select(`*, suppliers(id, name, contact, created_at)`)
       .single()
     
     if (error) {
@@ -212,6 +224,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         ...(updates.price !== undefined && { sell_price: updates.price }),
         ...(updates.min_stock !== undefined && { min_stock: updates.min_stock }),
         ...(updates.is_active !== undefined && { is_active: updates.is_active }),
+        ...(updates.supplier_id !== undefined && { supplier_id: updates.supplier_id }),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -339,6 +352,25 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     ))
   }, [supabase])
 
+  const addSupplier = useCallback(async (supplier: Partial<Supplier>): Promise<Supplier | null> => {
+    const { data, error } = await supabase
+      .from("suppliers")
+      .insert({
+        name: supplier.name || "",
+        contact: supplier.contact || null,
+      })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("Error adding supplier:", error)
+      return null
+    }
+    
+    setSuppliers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    return data
+  }, [supabase])
+
   const addCoupon = useCallback(async (coupon: Partial<Coupon>) => {
     const { data, error } = await supabase
       .from("coupons")
@@ -386,6 +418,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       warehouses,
       movements,
       coupons,
+      suppliers,
       productStock,
       loading,
       error,
@@ -400,6 +433,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       getProductById,
       addWarehouse,
       updateWarehouse,
+      addSupplier,
       addCoupon,
       useCoupon,
     }}>

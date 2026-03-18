@@ -154,6 +154,11 @@ export function ProductsTable({ products, onEdit, onToggleStatus }: ProductsTabl
                           {product.material}
                         </Badge>
                       )}
+                      {product.supplierName && (
+                        <Badge variant="outline" className="font-normal text-xs bg-blue-500/10 text-blue-600 border-blue-500/20">
+                          {product.supplierName}
+                        </Badge>
+                      )}
                     </div>
                     
                     <div className="flex items-center justify-between">
@@ -210,6 +215,9 @@ export function ProductsTable({ products, onEdit, onToggleStatus }: ProductsTabl
               <TableHead>
                 <SortableHeader field="material">Material</SortableHeader>
               </TableHead>
+              <TableHead>
+                <SortableHeader field="supplierName">Proveedor</SortableHeader>
+              </TableHead>
               <TableHead className="text-right">
                 <SortableHeader field="sell_price">Precio</SortableHeader>
               </TableHead>
@@ -256,6 +264,7 @@ export function ProductsTable({ products, onEdit, onToggleStatus }: ProductsTabl
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{product.material || "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">{product.supplierName || "-"}</TableCell>
                   <TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(price)}</TableCell>
                   <TableCell className="text-center">
                     <Badge variant="outline" className={cn("font-normal", statusConfig.className)}>
@@ -273,7 +282,7 @@ export function ProductsTable({ products, onEdit, onToggleStatus }: ProductsTabl
             })}
             {sortedProducts.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                   No hay productos que coincidan con los filtros
                 </TableCell>
               </TableRow>

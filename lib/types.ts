@@ -1,3 +1,10 @@
+export interface Supplier {
+  id: string
+  name: string
+  contact: string | null
+  created_at: string
+}
+
 export interface Product {
   id: string
   sku: string
@@ -12,11 +19,15 @@ export interface Product {
   min_stock: number
   total_stock: number
   is_active: boolean
+  supplier_id: string | null
   created_at: string
   updated_at: string
+  // Joined fields
+  supplier?: Supplier
   // Computed fields for UI compatibility
   stockStatus?: "in_stock" | "low_stock" | "out_of_stock"
   price?: number
+  supplierName?: string
 }
 
 export interface Warehouse {
@@ -105,6 +116,11 @@ export type Material = "Oro" | "Plata" | "Acero" | "Mixto"
 export interface Database {
   public: {
     Tables: {
+      suppliers: {
+        Row: Supplier
+        Insert: Omit<Supplier, 'id' | 'created_at'>
+        Update: Partial<Omit<Supplier, 'id' | 'created_at'>>
+      }
       products: {
         Row: Product
         Insert: Omit<Product, 'id' | 'created_at' | 'updated_at'>
