@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -25,14 +26,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ScanLine, Package, Plus, Minus, ArrowLeftRight, AlertCircle, CheckCircle2 } from "lucide-react"
-import type { Product } from "@/lib/types"
+import type { Product, StockByWarehouse } from "@/lib/types"
 
 export default function ScanPage() {
-  const { products, warehouses, getStockByWarehouse, adjustStock, transferStock } = useInventory()
+  const { products, warehouses, getStockByWarehouse, adjustStock, transferStock, loading } = useInventory()
   const [scanInput, setScanInput] = useState("")
   const [foundProduct, setFoundProduct] = useState<Product | null>(null)
+  const [stockByWarehouse, setStockByWarehouse] = useState<StockByWarehouse[]>([])
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [actionDialog, setActionDialog] = useState<{ 
@@ -65,6 +68,19 @@ export default function ScanPage() {
     }
   }, [error])
 
+  // Load stock by warehouse when product is found
+  useEffect(() => {
+    async function loadStock() {
+      if (foundProduct) {
+        const stock = await getStockByWarehouse(foundProduct.id)
+        setStockByWarehouse(stock)
+      } else {
+        setStockByWarehouse([])
+      }
+    }
+    loadStock()
+  }, [foundProduct, getStockByWarehouse])
+
   const handleScan = (e: React.FormEvent) => {
     e.preventDefault()
     const code = scanInput.trim()
@@ -95,30 +111,57 @@ export default function ScanPage() {
     setNotes("")
   }
 
-  const handleAction = () => {
+  const handleAction = async () => {
     if (!foundProduct) return
+    
+    setProcessing(true)
+    try {
+      if (actionDialog.type === "transfer") {
+        if (!fromWarehouse || !toWarehouse || !quantity) return
+        await transferStock(foundProduct.id, fromWarehouse, toWarehouse, parseInt(quantity), notes || undefined)
+        setSuccess(`Transferencia de ${quantity} unidades realizada correctamente`)
+      } else if (actionDialog.type === "in" || actionDialog.type === "out") {
+        if (!selectedWarehouse || !quantity) return
+        await adjustStock(foundProduct.id, selectedWarehouse, parseInt(quantity), actionDialog.type, notes || undefined)
+        setSuccess(`${actionDialog.type === "in" ? "Entrada" : "Salida"} de ${quantity} unidades registrada`)
+      }
 
-    if (actionDialog.type === "transfer") {
-      if (!fromWarehouse || !toWarehouse || !quantity) return
-      transferStock(foundProduct.id, fromWarehouse, toWarehouse, parseInt(quantity), notes || undefined)
-      setSuccess(`Transferencia de ${quantity} unidades realizada correctamente`)
-    } else if (actionDialog.type === "in" || actionDialog.type === "out") {
-      if (!selectedWarehouse || !quantity) return
-      adjustStock(foundProduct.id, selectedWarehouse, parseInt(quantity), actionDialog.type, notes || undefined)
-      setSuccess(`${actionDialog.type === "in" ? "Entrada" : "Salida"} de ${quantity} unidades registrada`)
+      setActionDialog({ open: false, type: null })
+      resetForm()
+      
+      // Refresh product data
+      const updatedProduct = products.find(p => p.id === foundProduct.id)
+      if (updatedProduct) {
+        setFoundProduct(updatedProduct)
+        const stock = await getStockByWarehouse(foundProduct.id)
+        setStockByWarehouse(stock)
+      }
+    } finally {
+      setProcessing(false)
+      inputRef.current?.focus()
     }
-
-    setActionDialog({ open: false, type: null })
-    resetForm()
-    
-    // Refresh product data
-    const updatedProduct = products.find(p => p.id === foundProduct.id)
-    if (updatedProduct) setFoundProduct(updatedProduct)
-    
-    inputRef.current?.focus()
   }
 
-  const stockByWarehouse = foundProduct ? getStockByWarehouse(foundProduct.id) : []
+  const activeWarehouses = warehouses.filter(w => w.is_active !== false)
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full">
+        <Header title="Escanear" />
+        <main className="flex-1 overflow-auto p-4 md:p-6">
+          <Card className="mb-4 md:mb-6">
+            <CardHeader className="pb-3">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-4 w-64 mt-2" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-12 w-full" />
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -186,13 +229,13 @@ export default function ScanPage() {
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold">{foundProduct.name}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {foundProduct.category} - {foundProduct.material}
+                      {foundProduct.category}{foundProduct.material && ` - ${foundProduct.material}`}
                     </p>
                   </div>
                   <Badge
-                    variant={foundProduct.isActive ? "default" : "secondary"}
+                    variant={foundProduct.is_active !== false ? "default" : "secondary"}
                   >
-                    {foundProduct.isActive ? "Activo" : "Inactivo"}
+                    {foundProduct.is_active !== false ? "Activo" : "Inactivo"}
                   </Badge>
                 </div>
 
@@ -203,17 +246,17 @@ export default function ScanPage() {
                   </div>
                   <div>
                     <span className="text-muted-foreground">Código de Barras:</span>
-                    <p className="font-mono font-medium">{foundProduct.barcode}</p>
+                    <p className="font-mono font-medium">{foundProduct.barcode || "-"}</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Precio:</span>
                     <p className="font-medium">
-                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(foundProduct.price)}
+                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(foundProduct.sell_price || foundProduct.price || 0)}
                     </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Stock Total:</span>
-                    <p className="font-medium">{foundProduct.totalStock} unidades</p>
+                    <p className="font-medium">{foundProduct.total_stock || 0} unidades</p>
                   </div>
                 </div>
 
@@ -336,7 +379,7 @@ export default function ScanPage() {
                       <SelectValue placeholder="Seleccionar origen" />
                     </SelectTrigger>
                     <SelectContent>
-                      {warehouses.filter(w => w.isActive).map(warehouse => (
+                      {activeWarehouses.map(warehouse => (
                         <SelectItem key={warehouse.id} value={warehouse.id}>
                           {warehouse.name}
                         </SelectItem>
@@ -351,7 +394,7 @@ export default function ScanPage() {
                       <SelectValue placeholder="Seleccionar destino" />
                     </SelectTrigger>
                     <SelectContent>
-                      {warehouses.filter(w => w.isActive && w.id !== fromWarehouse).map(warehouse => (
+                      {activeWarehouses.filter(w => w.id !== fromWarehouse).map(warehouse => (
                         <SelectItem key={warehouse.id} value={warehouse.id}>
                           {warehouse.name}
                         </SelectItem>
@@ -368,7 +411,7 @@ export default function ScanPage() {
                     <SelectValue placeholder="Seleccionar depósito" />
                   </SelectTrigger>
                   <SelectContent>
-                    {warehouses.filter(w => w.isActive).map(warehouse => (
+                    {activeWarehouses.map(warehouse => (
                       <SelectItem key={warehouse.id} value={warehouse.id}>
                         {warehouse.name}
                       </SelectItem>
@@ -412,12 +455,13 @@ export default function ScanPage() {
             <Button 
               onClick={handleAction}
               disabled={
-                actionDialog.type === "transfer" 
+                processing ||
+                (actionDialog.type === "transfer" 
                   ? !fromWarehouse || !toWarehouse || !quantity 
-                  : !selectedWarehouse || !quantity
+                  : !selectedWarehouse || !quantity)
               }
             >
-              Confirmar
+              {processing ? "Procesando..." : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>

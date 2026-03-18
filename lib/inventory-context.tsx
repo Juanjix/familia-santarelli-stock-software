@@ -1,19 +1,60 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
-import { products as initialProducts, warehouses as initialWarehouses, recentMovements as initialMovements } from "./mock-data"
-import type { Product, Warehouse, Movement, StockByWarehouse } from "./types"
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
+import { createClient } from "@/lib/supabase/client"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon } from "./types"
 
-export interface Coupon {
-  id: string
-  code: string
-  productId: string
-  productName: string
-  value: number
-  status: "active" | "used" | "expired"
-  createdAt: string
-  usedAt?: string
-  expiresAt: string
+// Helper to normalize product for UI
+function normalizeProduct(p: Product): Product {
+  return {
+    ...p,
+    stockStatus: p.total_stock === 0 ? "out_of_stock" : p.total_stock < (p.min_stock || 5) ? "low_stock" : "in_stock",
+    price: p.sell_price,
+  }
+}
+
+// Helper to normalize warehouse for UI
+function normalizeWarehouse(w: Warehouse): Warehouse {
+  return {
+    ...w,
+    isActive: w.is_active,
+    stockCount: w.stock_count,
+    totalValue: w.total_value,
+  }
+}
+
+// Helper to normalize movement for UI
+function normalizeMovement(m: Movement & { products?: Product; warehouses?: Warehouse; to_warehouses?: Warehouse }): Movement {
+  return {
+    ...m,
+    productId: m.product_id,
+    productName: m.products?.name || "",
+    fromWarehouse: m.warehouses?.name,
+    toWarehouse: m.to_warehouses?.name,
+    date: m.created_at,
+    user: m.user_name,
+    notes: m.reason || undefined,
+  }
+}
+
+// Helper to normalize coupon for UI
+function normalizeCoupon(c: Coupon & { original_products?: Product }): Coupon {
+  const now = new Date()
+  const expiresAt = c.expires_at ? new Date(c.expires_at) : null
+  let status: "active" | "used" | "expired" = "active"
+  if (c.is_used) status = "used"
+  else if (expiresAt && expiresAt < now) status = "expired"
+  
+  return {
+    ...c,
+    productId: c.original_product_id || undefined,
+    productName: c.original_products?.name || "",
+    value: c.amount,
+    status,
+    createdAt: c.created_at,
+    usedAt: c.used_at || undefined,
+    expiresAt: c.expires_at || undefined,
+  }
 }
 
 interface InventoryContextType {
@@ -21,217 +62,323 @@ interface InventoryContextType {
   warehouses: Warehouse[]
   movements: Movement[]
   coupons: Coupon[]
-  addProduct: (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => void
-  updateProduct: (id: string, updates: Partial<Product>) => void
-  deleteProduct: (id: string) => void
-  toggleProductStatus: (id: string) => void
-  adjustStock: (productId: string, warehouseId: string, quantity: number, type: "in" | "out" | "adjustment", notes?: string) => void
-  transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes?: string) => void
+  productStock: Map<string, StockByWarehouse[]>
+  loading: boolean
+  error: string | null
+  refreshData: () => Promise<void>
+  addProduct: (product: Partial<Product>) => Promise<Product | null>
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
+  deleteProduct: (id: string) => Promise<void>
+  toggleProductStatus: (id: string) => Promise<void>
+  adjustStock: (productId: string, warehouseId: string, quantity: number, type: "in" | "out" | "adjustment", notes?: string) => Promise<void>
+  transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes?: string) => Promise<void>
   getStockByWarehouse: (productId: string) => StockByWarehouse[]
   getProductById: (id: string) => Product | undefined
-  addWarehouse: (warehouse: Omit<Warehouse, "id">) => void
-  updateWarehouse: (id: string, updates: Partial<Warehouse>) => void
-  addCoupon: (coupon: Omit<Coupon, "id" | "createdAt">) => void
-  useCoupon: (id: string) => void
+  addWarehouse: (warehouse: Partial<Warehouse>) => Promise<void>
+  updateWarehouse: (id: string, updates: Partial<Warehouse>) => Promise<void>
+  addCoupon: (coupon: Partial<Coupon>) => Promise<void>
+  useCoupon: (id: string) => Promise<void>
 }
 
 const InventoryContext = createContext<InventoryContextType | null>(null)
 
-// Generate initial stock distribution for products
-function generateInitialStockDistribution(products: Product[], warehouses: Warehouse[]): Map<string, Map<string, number>> {
-  const stockMap = new Map<string, Map<string, number>>()
-  
-  products.forEach(product => {
-    const productStock = new Map<string, number>()
-    let remaining = product.totalStock
-    const activeWarehouses = warehouses.filter(w => w.isActive)
-    
-    activeWarehouses.forEach((warehouse, index) => {
-      if (index === activeWarehouses.length - 1) {
-        productStock.set(warehouse.id, remaining)
-      } else {
-        const qty = Math.floor(Math.random() * (remaining / 2))
-        productStock.set(warehouse.id, qty)
-        remaining -= qty
-      }
-    })
-    
-    stockMap.set(product.id, productStock)
-  })
-  
-  return stockMap
-}
-
 export function InventoryProvider({ children }: { children: ReactNode }) {
-  const [products, setProducts] = useState<Product[]>(initialProducts)
-  const [warehouses, setWarehouses] = useState<Warehouse[]>(initialWarehouses)
-  const [movements, setMovements] = useState<Movement[]>(initialMovements)
+  const [products, setProducts] = useState<Product[]>([])
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [movements, setMovements] = useState<Movement[]>([])
   const [coupons, setCoupons] = useState<Coupon[]>([])
-  const [stockDistribution, setStockDistribution] = useState<Map<string, Map<string, number>>>(() => 
-    generateInitialStockDistribution(initialProducts, initialWarehouses)
-  )
+  const [productStock, setProductStock] = useState<Map<string, StockByWarehouse[]>>(new Map())
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  
+  const supabase = createClient()
+
+  const refreshData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // Fetch all data in parallel
+      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes] = await Promise.all([
+        supabase.from("products").select("*").order("created_at", { ascending: false }),
+        supabase.from("warehouses").select("*").order("name"),
+        supabase.from("movements").select(`
+          *,
+          products(name),
+          warehouses:warehouse_id(name),
+          to_warehouses:to_warehouse_id(name)
+        `).order("created_at", { ascending: false }).limit(100),
+        supabase.from("coupons").select(`
+          *,
+          original_products:original_product_id(name)
+        `).order("created_at", { ascending: false }),
+        supabase.from("product_stock").select(`
+          product_id,
+          quantity,
+          warehouse_id,
+          warehouses(name)
+        `).gt("quantity", 0),
+      ])
+
+      if (productsRes.error) throw productsRes.error
+      if (warehousesRes.error) throw warehousesRes.error
+      if (movementsRes.error) throw movementsRes.error
+      if (couponsRes.error) throw couponsRes.error
+      if (stockRes.error) throw stockRes.error
+
+      setProducts((productsRes.data || []).map(normalizeProduct))
+      setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
+      setMovements((movementsRes.data || []).map(normalizeMovement))
+      setCoupons((couponsRes.data || []).map(normalizeCoupon))
+      
+      // Build product stock map
+      const stockMap = new Map<string, StockByWarehouse[]>()
+      for (const s of stockRes.data || []) {
+        const productId = s.product_id
+        const stockItem: StockByWarehouse = {
+          warehouseId: s.warehouse_id,
+          warehouseName: (s.warehouses as { name: string } | null)?.name || "",
+          quantity: s.quantity,
+        }
+        if (!stockMap.has(productId)) {
+          stockMap.set(productId, [])
+        }
+        stockMap.get(productId)!.push(stockItem)
+      }
+      setProductStock(stockMap)
+    } catch (err) {
+      console.error("Error fetching data:", err)
+      setError(err instanceof Error ? err.message : "Error al cargar datos")
+    } finally {
+      setLoading(false)
+    }
+  }, [supabase])
+
+  useEffect(() => {
+    refreshData()
+  }, [refreshData])
 
   const getProductById = useCallback((id: string) => {
     return products.find(p => p.id === id)
   }, [products])
 
   const getStockByWarehouse = useCallback((productId: string): StockByWarehouse[] => {
-    const productStock = stockDistribution.get(productId)
-    if (!productStock) return []
-    
-    const result: StockByWarehouse[] = []
-    productStock.forEach((quantity, warehouseId) => {
-      const warehouse = warehouses.find(w => w.id === warehouseId)
-      if (warehouse && quantity > 0) {
-        result.push({
-          warehouseId,
-          warehouseName: warehouse.name,
-          quantity,
-        })
-      }
-    })
-    return result
-  }, [stockDistribution, warehouses])
+    return productStock.get(productId) || []
+  }, [productStock])
 
-  const addProduct = useCallback((product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
-    const newProduct: Product = {
-      ...product,
-      id: String(Date.now()),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  const addProduct = useCallback(async (product: Partial<Product>): Promise<Product | null> => {
+    const { data, error } = await supabase
+      .from("products")
+      .insert({
+        sku: product.sku || `SKU-${Date.now()}`,
+        barcode: product.barcode || null,
+        name: product.name || "",
+        description: product.description || null,
+        category: product.category || "Accesorios",
+        material: product.material || null,
+        weight: product.weight || null,
+        cost_price: product.cost_price || 0,
+        sell_price: product.sell_price || product.price || 0,
+        min_stock: product.min_stock || 5,
+        total_stock: 0,
+        is_active: product.is_active !== false,
+      })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("Error adding product:", error)
+      return null
     }
+    
+    const newProduct = normalizeProduct(data)
     setProducts(prev => [newProduct, ...prev])
+    return newProduct
+  }, [supabase])
+
+  const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
+    const { error } = await supabase
+      .from("products")
+      .update({
+        ...(updates.name && { name: updates.name }),
+        ...(updates.sku && { sku: updates.sku }),
+        ...(updates.barcode !== undefined && { barcode: updates.barcode }),
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.category && { category: updates.category }),
+        ...(updates.material !== undefined && { material: updates.material }),
+        ...(updates.weight !== undefined && { weight: updates.weight }),
+        ...(updates.cost_price !== undefined && { cost_price: updates.cost_price }),
+        ...(updates.sell_price !== undefined && { sell_price: updates.sell_price }),
+        ...(updates.price !== undefined && { sell_price: updates.price }),
+        ...(updates.min_stock !== undefined && { min_stock: updates.min_stock }),
+        ...(updates.is_active !== undefined && { is_active: updates.is_active }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
     
-    // Initialize stock distribution for new product
-    const newStockMap = new Map(stockDistribution)
-    const productStock = new Map<string, number>()
-    warehouses.filter(w => w.isActive).forEach(w => productStock.set(w.id, 0))
-    newStockMap.set(newProduct.id, productStock)
-    setStockDistribution(newStockMap)
-  }, [stockDistribution, warehouses])
-
-  const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
+    if (error) {
+      console.error("Error updating product:", error)
+      return
+    }
+    
     setProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
+      p.id === id ? normalizeProduct({ ...p, ...updates, updated_at: new Date().toISOString() }) : p
     ))
-  }, [])
+  }, [supabase])
 
-  const deleteProduct = useCallback((id: string) => {
+  const deleteProduct = useCallback(async (id: string) => {
+    const { error } = await supabase.from("products").delete().eq("id", id)
+    
+    if (error) {
+      console.error("Error deleting product:", error)
+      return
+    }
+    
     setProducts(prev => prev.filter(p => p.id !== id))
-    const newStockMap = new Map(stockDistribution)
-    newStockMap.delete(id)
-    setStockDistribution(newStockMap)
-  }, [stockDistribution])
+  }, [supabase])
 
-  const toggleProductStatus = useCallback((id: string) => {
-    setProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, isActive: !p.isActive, updatedAt: new Date().toISOString() } : p
-    ))
-  }, [])
+  const toggleProductStatus = useCallback(async (id: string) => {
+    const product = products.find(p => p.id === id)
+    if (!product) return
+    
+    await updateProduct(id, { is_active: !product.is_active })
+  }, [products, updateProduct])
 
-  const addMovement = useCallback((movement: Omit<Movement, "id" | "date">) => {
-    const newMovement: Movement = {
-      ...movement,
-      id: String(Date.now()),
-      date: new Date().toISOString(),
+  const adjustStock = useCallback(async (
+    productId: string, 
+    warehouseId: string, 
+    quantity: number, 
+    type: "in" | "out" | "adjustment", 
+    notes?: string
+  ) => {
+    const dbType = type === "in" ? "entry" : type === "out" ? "exit" : "adjustment"
+    
+    const { error } = await supabase.rpc("update_stock", {
+      p_product_id: productId,
+      p_warehouse_id: warehouseId,
+      p_quantity: quantity,
+      p_type: dbType,
+      p_reason: notes || null,
+      p_user_name: "Usuario",
+      p_to_warehouse_id: null,
+    })
+    
+    if (error) {
+      console.error("Error adjusting stock:", error)
+      return
     }
-    setMovements(prev => [newMovement, ...prev])
-  }, [])
-
-  const adjustStock = useCallback((productId: string, warehouseId: string, quantity: number, type: "in" | "out" | "adjustment", notes?: string) => {
-    const product = products.find(p => p.id === productId)
-    const warehouse = warehouses.find(w => w.id === warehouseId)
-    if (!product || !warehouse) return
-
-    const newStockMap = new Map(stockDistribution)
-    const productStock = new Map(newStockMap.get(productId) || new Map())
-    const currentQty = productStock.get(warehouseId) || 0
-    const newQty = type === "out" ? Math.max(0, currentQty - quantity) : currentQty + quantity
-    productStock.set(warehouseId, newQty)
-    newStockMap.set(productId, productStock)
-    setStockDistribution(newStockMap)
-
-    // Update total stock
-    let totalStock = 0
-    productStock.forEach(qty => totalStock += qty)
-    updateProduct(productId, { 
-      totalStock,
-      stockStatus: totalStock === 0 ? "out_of_stock" : totalStock < 5 ? "low_stock" : "in_stock"
-    })
-
-    // Record movement
-    addMovement({
-      productId,
-      productName: product.name,
-      type: type === "in" ? "entry" : type === "out" ? "exit" : "adjustment",
-      quantity: type === "out" ? -quantity : quantity,
-      fromWarehouse: type === "out" || type === "adjustment" ? warehouse.name : undefined,
-      toWarehouse: type === "in" ? warehouse.name : undefined,
-      user: "Usuario",
-      notes,
-    })
-  }, [products, warehouses, stockDistribution, updateProduct, addMovement])
-
-  const transferStock = useCallback((productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes?: string) => {
-    const product = products.find(p => p.id === productId)
-    const fromWarehouse = warehouses.find(w => w.id === fromWarehouseId)
-    const toWarehouse = warehouses.find(w => w.id === toWarehouseId)
-    if (!product || !fromWarehouse || !toWarehouse) return
-
-    const newStockMap = new Map(stockDistribution)
-    const productStock = new Map(newStockMap.get(productId) || new Map())
     
-    const fromQty = productStock.get(fromWarehouseId) || 0
-    const toQty = productStock.get(toWarehouseId) || 0
-    
-    if (fromQty < quantity) return // Not enough stock
-    
-    productStock.set(fromWarehouseId, fromQty - quantity)
-    productStock.set(toWarehouseId, toQty + quantity)
-    newStockMap.set(productId, productStock)
-    setStockDistribution(newStockMap)
+    await refreshData()
+  }, [supabase, refreshData])
 
-    // Record movement
-    addMovement({
-      productId,
-      productName: product.name,
-      type: "transfer",
-      quantity,
-      fromWarehouse: fromWarehouse.name,
-      toWarehouse: toWarehouse.name,
-      user: "Usuario",
-      notes,
+  const transferStock = useCallback(async (
+    productId: string, 
+    fromWarehouseId: string, 
+    toWarehouseId: string, 
+    quantity: number, 
+    notes?: string
+  ) => {
+    const { error } = await supabase.rpc("update_stock", {
+      p_product_id: productId,
+      p_warehouse_id: fromWarehouseId,
+      p_quantity: quantity,
+      p_type: "transfer",
+      p_reason: notes || null,
+      p_user_name: "Usuario",
+      p_to_warehouse_id: toWarehouseId,
     })
-  }, [products, warehouses, stockDistribution, addMovement])
-
-  const addWarehouse = useCallback((warehouse: Omit<Warehouse, "id">) => {
-    const newWarehouse: Warehouse = {
-      ...warehouse,
-      id: String(Date.now()),
+    
+    if (error) {
+      console.error("Error transferring stock:", error)
+      return
     }
-    setWarehouses(prev => [...prev, newWarehouse])
-  }, [])
+    
+    await refreshData()
+  }, [supabase, refreshData])
 
-  const updateWarehouse = useCallback((id: string, updates: Partial<Warehouse>) => {
+  const addWarehouse = useCallback(async (warehouse: Partial<Warehouse>) => {
+    const { data, error } = await supabase
+      .from("warehouses")
+      .insert({
+        name: warehouse.name || "",
+        description: warehouse.description || null,
+        is_active: warehouse.is_active !== false,
+        stock_count: 0,
+        total_value: 0,
+      })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("Error adding warehouse:", error)
+      return
+    }
+    
+    setWarehouses(prev => [...prev, normalizeWarehouse(data)])
+  }, [supabase])
+
+  const updateWarehouse = useCallback(async (id: string, updates: Partial<Warehouse>) => {
+    const { error } = await supabase
+      .from("warehouses")
+      .update({
+        ...(updates.name && { name: updates.name }),
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.is_active !== undefined && { is_active: updates.is_active }),
+        ...(updates.isActive !== undefined && { is_active: updates.isActive }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+    
+    if (error) {
+      console.error("Error updating warehouse:", error)
+      return
+    }
+    
     setWarehouses(prev => prev.map(w => 
-      w.id === id ? { ...w, ...updates } : w
+      w.id === id ? normalizeWarehouse({ ...w, ...updates }) : w
     ))
-  }, [])
+  }, [supabase])
 
-  const addCoupon = useCallback((coupon: Omit<Coupon, "id" | "createdAt">) => {
-    const newCoupon: Coupon = {
-      ...coupon,
-      id: String(Date.now()),
-      createdAt: new Date().toISOString(),
+  const addCoupon = useCallback(async (coupon: Partial<Coupon>) => {
+    const { data, error } = await supabase
+      .from("coupons")
+      .insert({
+        code: coupon.code || `CPN-${Date.now()}`,
+        original_product_id: coupon.original_product_id || coupon.productId || null,
+        amount: coupon.amount || coupon.value || 0,
+        is_used: false,
+        expires_at: coupon.expires_at || coupon.expiresAt || null,
+        notes: coupon.notes || null,
+      })
+      .select(`*, original_products:original_product_id(name)`)
+      .single()
+    
+    if (error) {
+      console.error("Error adding coupon:", error)
+      return
     }
-    setCoupons(prev => [newCoupon, ...prev])
-  }, [])
+    
+    setCoupons(prev => [normalizeCoupon(data), ...prev])
+  }, [supabase])
 
-  const useCoupon = useCallback((id: string) => {
+  const useCoupon = useCallback(async (id: string) => {
+    const { error } = await supabase
+      .from("coupons")
+      .update({
+        is_used: true,
+        used_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+    
+    if (error) {
+      console.error("Error using coupon:", error)
+      return
+    }
+    
     setCoupons(prev => prev.map(c => 
-      c.id === id ? { ...c, status: "used" as const, usedAt: new Date().toISOString() } : c
+      c.id === id ? { ...c, is_used: true, used_at: new Date().toISOString(), status: "used" as const } : c
     ))
-  }, [])
+  }, [supabase])
 
   return (
     <InventoryContext.Provider value={{
@@ -239,6 +386,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       warehouses,
       movements,
       coupons,
+      productStock,
+      loading,
+      error,
+      refreshData,
       addProduct,
       updateProduct,
       deleteProduct,
