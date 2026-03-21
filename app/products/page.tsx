@@ -463,6 +463,56 @@ export default function ProductsPage() {
                   </div>
                 )}
               </div>
+              
+              <div className="grid gap-2">
+                <Label>Marca</Label>
+                {!showNewBrandInput ? (
+                  <div className="flex gap-2">
+                    <Select value={formBrand} onValueChange={setFormBrand}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Sin marca</SelectItem>
+                        {brands.filter(b => b.is_active).map(brand => (
+                          <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowNewBrandInput(true)}
+                      className="px-2"
+                    >
+                      Nuevo
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      value={newBrandName}
+                      onChange={(e) => setNewBrandName(e.target.value)}
+                      placeholder="Nombre de marca"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowNewBrandInput(false)
+                        setNewBrandName("")
+                      }}
+                      className="px-2"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
             
             <div className="grid gap-2">
               <Label>Material</Label>
@@ -496,31 +546,6 @@ export default function ProductsPage() {
                   onChange={(e) => setFormInternalCode(e.target.value)}
                   placeholder="Ej: INT-001"
                 />
-              </div>
-            </div>
-            
-                ) : (
-                  <div className="flex gap-2">
-                    <Input
-                      value={newBrandName}
-                      onChange={(e) => setNewBrandName(e.target.value)}
-                      placeholder="Nombre de marca"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setShowNewBrandInput(false)
-                        setNewBrandName("")
-                      }}
-                      className="px-2"
-                    >
-                      Cancelar
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
             

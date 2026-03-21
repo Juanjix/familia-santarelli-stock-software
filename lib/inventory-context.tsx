@@ -1,3 +1,5 @@
+"use client"
+
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand } from "./types"
