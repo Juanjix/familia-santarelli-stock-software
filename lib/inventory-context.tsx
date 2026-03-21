@@ -109,7 +109,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const supabase = createClient()
 
   const refreshData = useCallback(async () => {
-    console.log("[v0] refreshData: Starting data fetch from Supabase")
     setLoading(true)
     setError(null)
     
@@ -151,10 +150,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       if (categoriesRes.error) throw categoriesRes.error
       if (brandsRes.error) throw brandsRes.error
 
-      console.log("[v0] refreshData: Fetched warehouses:", warehousesRes.data?.length, "warehouses")
-      console.log("[v0] refreshData: Fetched products:", productsRes.data?.length, "products")
-      console.log("[v0] refreshData: Products data:", productsRes.data?.map(p => ({ id: p.id, name: p.name })))
-
       setProducts((productsRes.data || []).map(normalizeProduct))
       setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
       setMovements((movementsRes.data || []).map(normalizeMovement))
@@ -178,10 +173,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         stockMap.get(productId)!.push(stockItem)
       }
       setProductStock(stockMap)
-      console.log("[v0] refreshData: Data load complete")
     } catch (err) {
       console.error("Error fetching data:", err)
-      console.error("[v0] refreshData: Error details:", err instanceof Error ? err.message : String(err))
       setError(err instanceof Error ? err.message : "Error al cargar datos")
     } finally {
       setLoading(false)
@@ -190,7 +183,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   // Load data on component mount
   useEffect(() => {
-    console.log("[v0] InventoryProvider: Loading initial data from Supabase")
     refreshData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run on component mount, not on refreshData changes
@@ -204,8 +196,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, [productStock])
 
   const addProduct = useCallback(async (product: Partial<Product>): Promise<Product | null> => {
-    console.log("[v0] addProduct: Starting to add product to Supabase:", product.name)
-    
     const insertData = {
       sku: product.sku || `SKU-${Date.now()}`,
       barcode: product.barcode || null,
@@ -222,8 +212,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       supplier_id: product.supplier_id || null,
     }
     
-    console.log("[v0] addProduct: Insert data:", insertData)
-    
     const { data, error } = await supabase
       .from("products")
       .insert(insertData)
@@ -231,11 +219,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .single()
     
     if (error) {
-      console.error("[v0] addProduct: Error from Supabase:", error)
+      console.error("Error adding product:", error)
       return null
     }
-    
-    console.log("[v0] addProduct: Successfully saved to Supabase, received data:", data)
     
     const newProduct = normalizeProduct(data)
     setProducts(prev => [newProduct, ...prev])
