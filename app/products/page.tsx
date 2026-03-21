@@ -194,21 +194,24 @@ export default function ProductsPage() {
       }
       
       // Handle new brand creation if needed
-      let brandId = formBrand || null
+      let brandId: string | null = formBrand && formBrand !== "none" ? formBrand : null
       if (showNewBrandInput && newBrandName.trim()) {
         const newBrand = await addBrand({ name: newBrandName.trim() })
         if (newBrand) {
           brandId = newBrand.id
         }
       }
+
+      // Handle material - convert "none" to null
+      const materialValue = formMaterial && formMaterial !== "none" ? formMaterial : null
       
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
           name: formName,
           category: formCategory,
           category_id: categoryId || null,
-          brand_id: brandId || null,
-          material: formMaterial || null,
+          brand_id: brandId,
+          material: materialValue,
           sell_price: parseFloat(formPrice),
           cost_price: parseFloat(formCostPrice) || 0,
           weight: parseFloat(formWeight) || null,
@@ -224,8 +227,8 @@ export default function ProductsPage() {
           sku: generateSKU(formCategory),
           category: formCategory,
           category_id: categoryId || null,
-          brand_id: brandId || null,
-          material: formMaterial || null,
+          brand_id: brandId,
+          material: materialValue,
           weight: parseFloat(formWeight) || null,
           barcode: generateBarcode(),
           sell_price: parseFloat(formPrice),
@@ -473,7 +476,7 @@ export default function ProductsPage() {
                         <SelectValue placeholder="Seleccionar" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Sin marca</SelectItem>
+                        <SelectItem value="none">Sin marca</SelectItem>
                         {brands.filter(b => b.is_active).map(brand => (
                           <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
                         ))}
@@ -521,7 +524,7 @@ export default function ProductsPage() {
                   <SelectValue placeholder="Seleccionar" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin especificar</SelectItem>
+                  <SelectItem value="none">Sin especificar</SelectItem>
                   {materials.map(mat => (
                     <SelectItem key={mat} value={mat}>{mat}</SelectItem>
                   ))}
