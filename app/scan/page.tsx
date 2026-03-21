@@ -142,7 +142,7 @@ export default function ScanPage() {
     }
   }
 
-  const activeWarehouses = warehouses.filter(w => w.is_active !== false)
+  const activeWarehouses = warehouses.filter(w => w.isActive !== false)
 
   if (loading) {
     return (
