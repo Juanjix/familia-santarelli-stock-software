@@ -81,6 +81,7 @@ export default function LabelsPage() {
   const { products } = useInventory()
   const [search, setSearch] = useState("")
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [quantities, setQuantities] = useState<Map<string, number>>(new Map())
   const [previewProduct, setPreviewProduct] = useState<typeof products[0] | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -98,6 +99,10 @@ export default function LabelsPage() {
       newSelected.delete(productId)
     } else {
       newSelected.add(productId)
+      // Initialize quantity to 1 if not already set
+      if (!quantities.has(productId)) {
+        setQuantities(new Map(quantities).set(productId, 1))
+      }
     }
     setSelectedProducts(newSelected)
   }
@@ -110,6 +115,24 @@ export default function LabelsPage() {
     }
   }
 
+  const setQuantity = (productId: string, quantity: number) => {
+    const newQuantities = new Map(quantities)
+    if (quantity > 0) {
+      newQuantities.set(productId, quantity)
+    } else {
+      newQuantities.delete(productId)
+    }
+    setQuantities(newQuantities)
+  }
+
+  const getTotalLabels = () => {
+    let total = 0
+    selectedProducts.forEach(productId => {
+      total += quantities.get(productId) || 1
+    })
+    return total
+  }
+
   const handlePrint = () => {
     const selectedProductsList = products.filter(p => selectedProducts.has(p.id))
     if (selectedProductsList.length === 0) return
@@ -117,17 +140,23 @@ export default function LabelsPage() {
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
-    const labelsHtml = selectedProductsList.map(product => `
-      <div style="width: 200px; border: 1px solid #ccc; padding: 12px; text-align: center; page-break-inside: avoid; margin: 8px;">
-        <div style="font-size: 10px; font-weight: 600; color: #666; margin-bottom: 4px;">SANTARELLI</div>
-        <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px;">${product.name}</div>
-        <div style="font-size: 10px; color: #666; margin-bottom: 8px;">${product.material}</div>
-        <div style="font-family: 'Libre Barcode 128', monospace; font-size: 48px; letter-spacing: -2px;">*${product.barcode}*</div>
-        <div style="font-family: monospace; font-size: 10px; color: #666;">${product.barcode}</div>
-        <div style="font-size: 10px; color: #666; margin-top: 8px;">SKU: ${product.sku}</div>
-        <div style="font-size: 16px; font-weight: bold; margin-top: 4px;">$${product.price.toLocaleString('es-AR')}</div>
-      </div>
-    `).join('')
+    let labelsHtml = ""
+    selectedProductsList.forEach(product => {
+      const quantity = quantities.get(product.id) || 1
+      for (let i = 0; i < quantity; i++) {
+        labelsHtml += `
+          <div style="width: 200px; border: 1px solid #ccc; padding: 12px; text-align: center; page-break-inside: avoid; margin: 8px;">
+            <div style="font-size: 10px; font-weight: 600; color: #666; margin-bottom: 4px;">SANTARELLI</div>
+            <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px;">${product.name}</div>
+            <div style="font-size: 10px; color: #666; margin-bottom: 8px;">${product.material}</div>
+            <div style="font-family: 'Libre Barcode 128', monospace; font-size: 48px; letter-spacing: -2px;">*${product.barcode}*</div>
+            <div style="font-family: monospace; font-size: 10px; color: #666;">${product.barcode}</div>
+            <div style="font-size: 10px; color: #666; margin-top: 8px;">SKU: ${product.sku}</div>
+            <div style="font-size: 16px; font-weight: bold; margin-top: 4px;">$${product.price.toLocaleString('es-AR')}</div>
+          </div>
+        `
+      }
+    })
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -171,7 +200,7 @@ export default function LabelsPage() {
           <div className="flex items-center gap-2">
             {selectedProducts.size > 0 && (
               <Badge variant="secondary" className="mr-2">
-                {selectedProducts.size} seleccionados
+                {selectedProducts.size} seleccionados ({getTotalLabels()} etiquetas)
               </Badge>
             )}
             <Button
@@ -199,6 +228,7 @@ export default function LabelsPage() {
                 <TableHead>Código de Barras</TableHead>
                 <TableHead>Material</TableHead>
                 <TableHead className="text-right">Precio</TableHead>
+                <TableHead className="w-32 text-center">Cantidad</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -236,6 +266,38 @@ export default function LabelsPage() {
                   </TableCell>
                   <TableCell className="text-right font-semibold">
                     {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(product.price)}
+                  </TableCell>
+                  <TableCell>
+                    {selectedProducts.has(product.id) ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => setQuantity(product.id, Math.max(1, (quantities.get(product.id) || 1) - 1))}
+                        >
+                          −
+                        </Button>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="99"
+                          value={quantities.get(product.id) || 1}
+                          onChange={(e) => setQuantity(product.id, Math.max(1, parseInt(e.target.value) || 1))}
+                          className="h-8 w-12 text-center p-0"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => setQuantity(product.id, Math.min(99, (quantities.get(product.id) || 1) + 1))}
+                        >
+                          +
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

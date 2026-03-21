@@ -28,7 +28,7 @@ const navigation = [
   { name: "Etiquetas", href: "/labels", icon: Tags },
   { name: "Escanear", href: "/scan", icon: ScanLine },
   { name: "Movimientos", href: "/movements", icon: ArrowLeftRight },
-  { name: "Cupones de Cambio", href: "/coupons", icon: Ticket },
+  { name: "Ticket de Cambio", href: "/coupons", icon: Ticket },
   { name: "Reportes", href: "/reports", icon: BarChart3 },
   { name: "Configuración", href: "/settings", icon: Settings },
 ]

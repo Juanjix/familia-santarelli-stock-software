@@ -5,6 +5,24 @@ export interface Supplier {
   created_at: string
 }
 
+export interface Category {
+  id: string
+  name: string
+  description: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Brand {
+  id: string
+  name: string
+  description: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Product {
   id: string
   sku: string
@@ -12,6 +30,7 @@ export interface Product {
   name: string
   description: string | null
   category: string
+  category_id?: string | null
   material: string | null
   weight: number | null
   cost_price: number
@@ -20,14 +39,21 @@ export interface Product {
   total_stock: number
   is_active: boolean
   supplier_id: string | null
+  factory_code?: string | null
+  internal_code?: string | null
+  brand_id?: string | null
   created_at: string
   updated_at: string
   // Joined fields
   supplier?: Supplier
+  category_obj?: Category
+  brand?: Brand
   // Computed fields for UI compatibility
   stockStatus?: "in_stock" | "low_stock" | "out_of_stock"
   price?: number
   supplierName?: string
+  categoryName?: string
+  brandName?: string
 }
 
 export interface Warehouse {
@@ -116,6 +142,16 @@ export type Material = "Oro" | "Plata" | "Acero" | "Mixto"
 export interface Database {
   public: {
     Tables: {
+      categories: {
+        Row: Category
+        Insert: Omit<Category, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<Category, 'id' | 'created_at'>>
+      }
+      brands: {
+        Row: Brand
+        Insert: Omit<Brand, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<Brand, 'id' | 'created_at'>>
+      }
       suppliers: {
         Row: Supplier
         Insert: Omit<Supplier, 'id' | 'created_at'>
