@@ -170,8 +170,12 @@ export default function ProductsPage() {
   }
 
   const handleSave = async () => {
-    if (!formName || !formCategory || !formPrice) return
+    if (!formName || !formCategory || !formPrice) {
+      console.log("[v0] handleSave validation failed - name:", formName, "category:", formCategory, "price:", formPrice)
+      return
+    }
     
+    console.log("[v0] handleSave starting - saving product:", formName)
     setSaving(true)
     try {
       // Handle new supplier creation if needed
@@ -209,6 +213,7 @@ export default function ProductsPage() {
       const materialValue = formMaterial && formMaterial !== "none" ? formMaterial : null
       
       if (editingProduct) {
+        console.log("[v0] handleSave updating existing product:", editingProduct.id)
         await updateProduct(editingProduct.id, {
           name: formName,
           category: formCategory,
@@ -225,6 +230,7 @@ export default function ProductsPage() {
           internal_code: formInternalCode || null,
         })
       } else {
+        console.log("[v0] handleSave creating new product")
         const newProduct = await addProduct({
           name: formName,
           sku: generateSKU(formCategory),
@@ -243,17 +249,23 @@ export default function ProductsPage() {
           internal_code: formInternalCode || null,
         })
         
+        console.log("[v0] handleSave product created:", newProduct?.id, newProduct?.name)
+        
         // Auto-create stock record in "Shopping" warehouse if product was created successfully
         if (newProduct && warehouses.length > 0) {
           const shoppingWarehouse = warehouses.find(w => w.name === "Shopping") || warehouses[0]
           if (shoppingWarehouse) {
+            console.log("[v0] handleSave creating stock record in warehouse:", shoppingWarehouse.name)
             await adjustStock(newProduct.id, shoppingWarehouse.id, 1, "in", "Stock inicial creado automáticamente")
           }
         }
       }
 
+      console.log("[v0] handleSave completed successfully")
       setDialogOpen(false)
       resetForm()
+    } catch (error) {
+      console.error("[v0] handleSave error:", error)
     } finally {
       setSaving(false)
     }
