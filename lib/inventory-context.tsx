@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand } from "./types"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -65,6 +65,8 @@ interface InventoryContextType {
   movements: Movement[]
   coupons: Coupon[]
   suppliers: Supplier[]
+  categories: Category[]
+  brands: Brand[]
   productStock: Map<string, StockByWarehouse[]>
   loading: boolean
   error: string | null
@@ -80,6 +82,12 @@ interface InventoryContextType {
   addWarehouse: (warehouse: Partial<Warehouse>) => Promise<void>
   updateWarehouse: (id: string, updates: Partial<Warehouse>) => Promise<void>
   addSupplier: (supplier: Partial<Supplier>) => Promise<Supplier | null>
+  addCategory: (category: Partial<Category>) => Promise<Category | null>
+  updateCategory: (id: string, updates: Partial<Category>) => Promise<void>
+  deleteCategory: (id: string) => Promise<void>
+  addBrand: (brand: Partial<Brand>) => Promise<Brand | null>
+  updateBrand: (id: string, updates: Partial<Brand>) => Promise<void>
+  deleteBrand: (id: string) => Promise<void>
   addCoupon: (coupon: Partial<Coupon>) => Promise<void>
   useCoupon: (id: string) => Promise<void>
 }
@@ -92,6 +100,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [movements, setMovements] = useState<Movement[]>([])
   const [coupons, setCoupons] = useState<Coupon[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [brands, setBrands] = useState<Brand[]>([])
   const [productStock, setProductStock] = useState<Map<string, StockByWarehouse[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,7 +114,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     
     try {
       // Fetch all data in parallel
-      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes] = await Promise.all([
+      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes] = await Promise.all([
         supabase.from("products").select(`
           *,
           suppliers(id, name, contact, created_at)
@@ -127,6 +137,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           warehouses(name)
         `).gt("quantity", 0),
         supabase.from("suppliers").select("*").order("name"),
+        supabase.from("categories").select("*").order("name"),
+        supabase.from("brands").select("*").order("name"),
       ])
 
       if (productsRes.error) throw productsRes.error
@@ -135,12 +147,16 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       if (couponsRes.error) throw couponsRes.error
       if (stockRes.error) throw stockRes.error
       if (suppliersRes.error) throw suppliersRes.error
+      if (categoriesRes.error) throw categoriesRes.error
+      if (brandsRes.error) throw brandsRes.error
 
       setProducts((productsRes.data || []).map(normalizeProduct))
       setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
       setMovements((movementsRes.data || []).map(normalizeMovement))
       setCoupons((couponsRes.data || []).map(normalizeCoupon))
       setSuppliers(suppliersRes.data || [])
+      setCategories(categoriesRes.data || [])
+      setBrands(brandsRes.data || [])
       
       // Build product stock map
       const stockMap = new Map<string, StockByWarehouse[]>()
@@ -412,6 +428,110 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     ))
   }, [supabase])
 
+  const addCategory = useCallback(async (category: Partial<Category>): Promise<Category | null> => {
+    const { data, error } = await supabase
+      .from("categories")
+      .insert({
+        name: category.name || "",
+        description: category.description || null,
+        is_active: category.is_active !== false,
+      })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("Error adding category:", error)
+      return null
+    }
+    
+    setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    return data
+  }, [supabase])
+
+  const updateCategory = useCallback(async (id: string, updates: Partial<Category>) => {
+    const { error } = await supabase
+      .from("categories")
+      .update({
+        ...(updates.name && { name: updates.name }),
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.is_active !== undefined && { is_active: updates.is_active }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+    
+    if (error) {
+      console.error("Error updating category:", error)
+      return
+    }
+    
+    setCategories(prev => prev.map(c => 
+      c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c
+    ))
+  }, [supabase])
+
+  const deleteCategory = useCallback(async (id: string) => {
+    const { error } = await supabase.from("categories").delete().eq("id", id)
+    
+    if (error) {
+      console.error("Error deleting category:", error)
+      return
+    }
+    
+    setCategories(prev => prev.filter(c => c.id !== id))
+  }, [supabase])
+
+  const addBrand = useCallback(async (brand: Partial<Brand>): Promise<Brand | null> => {
+    const { data, error } = await supabase
+      .from("brands")
+      .insert({
+        name: brand.name || "",
+        description: brand.description || null,
+        is_active: brand.is_active !== false,
+      })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("Error adding brand:", error)
+      return null
+    }
+    
+    setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    return data
+  }, [supabase])
+
+  const updateBrand = useCallback(async (id: string, updates: Partial<Brand>) => {
+    const { error } = await supabase
+      .from("brands")
+      .update({
+        ...(updates.name && { name: updates.name }),
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.is_active !== undefined && { is_active: updates.is_active }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+    
+    if (error) {
+      console.error("Error updating brand:", error)
+      return
+    }
+    
+    setBrands(prev => prev.map(b => 
+      b.id === id ? { ...b, ...updates, updated_at: new Date().toISOString() } : b
+    ))
+  }, [supabase])
+
+  const deleteBrand = useCallback(async (id: string) => {
+    const { error } = await supabase.from("brands").delete().eq("id", id)
+    
+    if (error) {
+      console.error("Error deleting brand:", error)
+      return
+    }
+    
+    setBrands(prev => prev.filter(b => b.id !== id))
+  }, [supabase])
+
   return (
     <InventoryContext.Provider value={{
       products,
@@ -419,6 +539,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       movements,
       coupons,
       suppliers,
+      categories,
+      brands,
       productStock,
       loading,
       error,
@@ -434,6 +556,12 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       addWarehouse,
       updateWarehouse,
       addSupplier,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      addBrand,
+      updateBrand,
+      deleteBrand,
       addCoupon,
       useCoupon,
     }}>

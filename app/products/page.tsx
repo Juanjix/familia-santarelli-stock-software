@@ -31,7 +31,7 @@ import type { Product } from "@/lib/types"
 
 const ITEMS_PER_PAGE = 20
 
-const categories = ["Anillos", "Collares", "Pulseras", "Aros", "Cadenas", "Relojes", "Accesorios"]
+const defaultCategories = ["Anillos", "Collares", "Pulseras", "Aros", "Cadenas", "Relojes", "Accesorios"]
 const materials = ["Oro", "Plata", "Acero", "Mixto"]
 
 function generateSKU(category: string): string {
@@ -44,7 +44,7 @@ function generateBarcode(): string {
 }
 
 export default function ProductsPage() {
-  const { products, suppliers, addProduct, updateProduct, toggleProductStatus, addSupplier, loading } = useInventory()
+  const { products, suppliers, categories, brands, warehouses, addProduct, updateProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("Todos")
   const [material, setMaterial] = useState("Todos")
@@ -59,6 +59,7 @@ export default function ProductsPage() {
   // Form state
   const [formName, setFormName] = useState("")
   const [formCategory, setFormCategory] = useState("")
+  const [formBrand, setFormBrand] = useState("")
   const [formMaterial, setFormMaterial] = useState("")
   const [formPrice, setFormPrice] = useState("")
   const [formCostPrice, setFormCostPrice] = useState("")
@@ -66,8 +67,25 @@ export default function ProductsPage() {
   const [formMinStock, setFormMinStock] = useState("5")
   const [formActive, setFormActive] = useState(true)
   const [formSupplierId, setFormSupplierId] = useState("")
+  const [formFactoryCode, setFormFactoryCode] = useState("")
+  const [formInternalCode, setFormInternalCode] = useState("")
   const [newSupplierName, setNewSupplierName] = useState("")
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [newBrandName, setNewBrandName] = useState("")
   const [showNewSupplierInput, setShowNewSupplierInput] = useState(false)
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false)
+  const [showNewBrandInput, setShowNewBrandInput] = useState(false)
+
+  const categoryNames = useMemo(() => {
+    const catList = categories.length > 0 
+      ? categories.filter(c => c.is_active).map(c => c.name)
+      : defaultCategories
+    return ["Todos", ...catList]
+  }, [categories])
+
+  const brandNames = useMemo(() => {
+    return brands.filter(b => b.is_active).map(b => b.name).sort()
+  }, [brands])
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -75,7 +93,9 @@ export default function ProductsPage() {
         search === "" ||
         product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.sku.toLowerCase().includes(search.toLowerCase()) ||
-        (product.barcode && product.barcode.includes(search))
+        (product.barcode && product.barcode.includes(search)) ||
+        (product.factory_code && product.factory_code.includes(search)) ||
+        (product.internal_code && product.internal_code.includes(search))
       
       const matchesCategory = category === "Todos" || product.category === category
       const matchesMaterial = material === "Todos" || product.material === material
@@ -102,6 +122,7 @@ export default function ProductsPage() {
   const resetForm = () => {
     setFormName("")
     setFormCategory("")
+    setFormBrand("")
     setFormMaterial("")
     setFormPrice("")
     setFormCostPrice("")
@@ -109,8 +130,14 @@ export default function ProductsPage() {
     setFormMinStock("5")
     setFormActive(true)
     setFormSupplierId("")
+    setFormFactoryCode("")
+    setFormInternalCode("")
     setNewSupplierName("")
+    setNewCategoryName("")
+    setNewBrandName("")
     setShowNewSupplierInput(false)
+    setShowNewCategoryInput(false)
+    setShowNewBrandInput(false)
     setEditingProduct(null)
   }
 
@@ -123,6 +150,7 @@ export default function ProductsPage() {
     setEditingProduct(product)
     setFormName(product.name)
     setFormCategory(product.category)
+    setFormBrand(product.brand_id || "")
     setFormMaterial(product.material || "")
     setFormPrice(String(product.sell_price || product.price || 0))
     setFormCostPrice(String(product.cost_price || 0))
@@ -130,8 +158,14 @@ export default function ProductsPage() {
     setFormMinStock(String(product.min_stock || 5))
     setFormActive(product.is_active !== false)
     setFormSupplierId(product.supplier_id || "")
+    setFormFactoryCode(product.factory_code || "")
+    setFormInternalCode(product.internal_code || "")
     setShowNewSupplierInput(false)
+    setShowNewCategoryInput(false)
+    setShowNewBrandInput(false)
     setNewSupplierName("")
+    setNewCategoryName("")
+    setNewBrandName("")
     setDialogOpen(true)
   }
 
@@ -149,24 +183,55 @@ export default function ProductsPage() {
         }
       }
       
+      // Handle new category creation if needed
+      let categoryId = formCategory || null
+      if (showNewCategoryInput && newCategoryName.trim()) {
+        const newCategory = await addCategory({ name: newCategoryName.trim() })
+        if (newCategory) {
+          categoryId = newCategory.id
+        }
+      } else {
+        // Find category ID from existing categories
+        const cat = categories.find(c => c.name === formCategory)
+        if (cat) categoryId = cat.id
+      }
+      
+      // Handle new brand creation if needed
+      let brandId: string | null = formBrand && formBrand !== "none" ? formBrand : null
+      if (showNewBrandInput && newBrandName.trim()) {
+        const newBrand = await addBrand({ name: newBrandName.trim() })
+        if (newBrand) {
+          brandId = newBrand.id
+        }
+      }
+
+      // Handle material - convert "none" to null
+      const materialValue = formMaterial && formMaterial !== "none" ? formMaterial : null
+      
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
           name: formName,
           category: formCategory,
-          material: formMaterial || null,
+          category_id: categoryId || null,
+          brand_id: brandId,
+          material: materialValue,
           sell_price: parseFloat(formPrice),
           cost_price: parseFloat(formCostPrice) || 0,
           weight: parseFloat(formWeight) || null,
           min_stock: parseInt(formMinStock) || 5,
           is_active: formActive,
           supplier_id: supplierId,
+          factory_code: formFactoryCode || null,
+          internal_code: formInternalCode || null,
         })
       } else {
-        await addProduct({
+        const newProduct = await addProduct({
           name: formName,
           sku: generateSKU(formCategory),
           category: formCategory,
-          material: formMaterial || null,
+          category_id: categoryId || null,
+          brand_id: brandId,
+          material: materialValue,
           weight: parseFloat(formWeight) || null,
           barcode: generateBarcode(),
           sell_price: parseFloat(formPrice),
@@ -174,7 +239,17 @@ export default function ProductsPage() {
           min_stock: parseInt(formMinStock) || 5,
           is_active: formActive,
           supplier_id: supplierId,
+          factory_code: formFactoryCode || null,
+          internal_code: formInternalCode || null,
         })
+        
+        // Auto-create stock record in "Shopping" warehouse if product was created successfully
+        if (newProduct && warehouses.length > 0) {
+          const shoppingWarehouse = warehouses.find(w => w.name === "Shopping") || warehouses[0]
+          if (shoppingWarehouse) {
+            await adjustStock(newProduct.id, shoppingWarehouse.id, 1, "in", "Stock inicial creado automáticamente")
+          }
+        }
       }
 
       setDialogOpen(false)
@@ -250,6 +325,7 @@ export default function ProductsPage() {
               setCurrentPage(1)
             }}
             onClearFilters={handleClearFilters}
+            categories={categoryNames}
           />
 
           <ProductsTable 
@@ -348,30 +424,139 @@ export default function ProductsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Categoría</Label>
-                <Select value={formCategory} onValueChange={setFormCategory}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {!showNewCategoryInput ? (
+                  <div className="flex gap-2">
+                    <Select value={formCategory} onValueChange={setFormCategory}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.length > 0 
+                          ? categories.filter(c => c.is_active).map(cat => (
+                              <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                            ))
+                          : defaultCategories.map(cat => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))
+                        }
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowNewCategoryInput(true)}
+                      className="px-2"
+                    >
+                      Nuevo
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Nombre de categoría"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowNewCategoryInput(false)
+                        setNewCategoryName("")
+                      }}
+                      className="px-2"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                )}
               </div>
               
               <div className="grid gap-2">
-                <Label>Material</Label>
-                <Select value={formMaterial} onValueChange={setFormMaterial}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materials.map(mat => (
-                      <SelectItem key={mat} value={mat}>{mat}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Marca</Label>
+                {!showNewBrandInput ? (
+                  <div className="flex gap-2">
+                    <Select value={formBrand} onValueChange={setFormBrand}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin marca</SelectItem>
+                        {brands.filter(b => b.is_active).map(brand => (
+                          <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowNewBrandInput(true)}
+                      className="px-2"
+                    >
+                      Nuevo
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      value={newBrandName}
+                      onChange={(e) => setNewBrandName(e.target.value)}
+                      placeholder="Nombre de marca"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowNewBrandInput(false)
+                        setNewBrandName("")
+                      }}
+                      className="px-2"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label>Material</Label>
+              <Select value={formMaterial} onValueChange={setFormMaterial}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin especificar</SelectItem>
+                  {materials.map(mat => (
+                    <SelectItem key={mat} value={mat}>{mat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Código de Fábrica</Label>
+                <Input
+                  value={formFactoryCode}
+                  onChange={(e) => setFormFactoryCode(e.target.value)}
+                  placeholder="Ej: MFG-12345"
+                />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label>Código Interno</Label>
+                <Input
+                  value={formInternalCode}
+                  onChange={(e) => setFormInternalCode(e.target.value)}
+                  placeholder="Ej: INT-001"
+                />
               </div>
             </div>
             

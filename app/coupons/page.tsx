@@ -109,7 +109,7 @@ export default function CouponsPage() {
 
   return (
     <div className="flex flex-col">
-      <Header title="Cupones de Cambio" />
+      <Header title="Ticket de Cambio" />
       
       <main className="flex-1 p-6">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -140,14 +140,14 @@ export default function CouponsPage() {
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                Crear Cupón
+                Crear Ticket
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Crear Cupón de Cambio</DialogTitle>
+                <DialogTitle>Crear Ticket de Cambio</DialogTitle>
                 <DialogDescription>
-                  Genere un cupón para un producto específico
+                  Genere un ticket de cambio para un producto específico
                 </DialogDescription>
               </DialogHeader>
               
@@ -220,7 +220,7 @@ export default function CouponsPage() {
                 <Ticket className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Cupones Activos</p>
+                <p className="text-sm text-muted-foreground">Tickets Activos</p>
                 <p className="text-2xl font-bold">{coupons.filter(c => c.status === "active").length}</p>
               </div>
             </div>
@@ -231,7 +231,7 @@ export default function CouponsPage() {
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Cupones Usados</p>
+                <p className="text-sm text-muted-foreground">Tickets Usados</p>
                 <p className="text-2xl font-bold">{coupons.filter(c => c.status === "used").length}</p>
               </div>
             </div>
@@ -252,7 +252,7 @@ export default function CouponsPage() {
         </div>
 
         <div className="rounded-lg border border-border bg-card">
-          <Table>
+            <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Código</TableHead>
@@ -268,7 +268,7 @@ export default function CouponsPage() {
               {filteredCoupons.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    No hay cupones para mostrar
+                    No hay tickets para mostrar
                   </TableCell>
                 </TableRow>
               ) : (
