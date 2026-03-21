@@ -31,7 +31,7 @@ import type { Product } from "@/lib/types"
 
 const ITEMS_PER_PAGE = 20
 
-const categories = ["Anillos", "Collares", "Pulseras", "Aros", "Cadenas", "Relojes", "Accesorios"]
+const defaultCategories = ["Anillos", "Collares", "Pulseras", "Aros", "Cadenas", "Relojes", "Accesorios"]
 const materials = ["Oro", "Plata", "Acero", "Mixto"]
 
 function generateSKU(category: string): string {
@@ -77,7 +77,10 @@ export default function ProductsPage() {
   const [showNewBrandInput, setShowNewBrandInput] = useState(false)
 
   const categoryNames = useMemo(() => {
-    return ["Todos", ...categories.filter(c => c.is_active).map(c => c.name)].sort()
+    const catList = categories.length > 0 
+      ? categories.filter(c => c.is_active).map(c => c.name)
+      : defaultCategories
+    return ["Todos", ...catList]
   }, [categories])
 
   const brandNames = useMemo(() => {
@@ -428,9 +431,14 @@ export default function ProductsPage() {
                         <SelectValue placeholder="Seleccionar" />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.filter(c => c.is_active).map(cat => (
-                          <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
-                        ))}
+                        {categories.length > 0 
+                          ? categories.filter(c => c.is_active).map(cat => (
+                              <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                            ))
+                          : defaultCategories.map(cat => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))
+                        }
                       </SelectContent>
                     </Select>
                     <Button
