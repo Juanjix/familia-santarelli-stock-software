@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -153,6 +153,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
       console.log("[v0] refreshData: Fetched warehouses:", warehousesRes.data?.length, "warehouses")
       console.log("[v0] refreshData: Fetched products:", productsRes.data?.length, "products")
+      console.log("[v0] refreshData: Products data:", productsRes.data?.map(p => ({ id: p.id, name: p.name })))
 
       setProducts((productsRes.data || []).map(normalizeProduct))
       setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
@@ -203,30 +204,38 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, [productStock])
 
   const addProduct = useCallback(async (product: Partial<Product>): Promise<Product | null> => {
+    console.log("[v0] addProduct: Starting to add product to Supabase:", product.name)
+    
+    const insertData = {
+      sku: product.sku || `SKU-${Date.now()}`,
+      barcode: product.barcode || null,
+      name: product.name || "",
+      description: product.description || null,
+      category: product.category || "Accesorios",
+      material: product.material || null,
+      weight: product.weight || null,
+      cost_price: product.cost_price || 0,
+      sell_price: product.sell_price || product.price || 0,
+      min_stock: product.min_stock || 5,
+      total_stock: 0,
+      is_active: product.is_active !== false,
+      supplier_id: product.supplier_id || null,
+    }
+    
+    console.log("[v0] addProduct: Insert data:", insertData)
+    
     const { data, error } = await supabase
       .from("products")
-      .insert({
-        sku: product.sku || `SKU-${Date.now()}`,
-        barcode: product.barcode || null,
-        name: product.name || "",
-        description: product.description || null,
-        category: product.category || "Accesorios",
-        material: product.material || null,
-        weight: product.weight || null,
-        cost_price: product.cost_price || 0,
-        sell_price: product.sell_price || product.price || 0,
-        min_stock: product.min_stock || 5,
-        total_stock: 0,
-        is_active: product.is_active !== false,
-        supplier_id: product.supplier_id || null,
-      })
+      .insert(insertData)
       .select(`*, suppliers(id, name, contact, created_at)`)
       .single()
     
     if (error) {
-      console.error("Error adding product:", error)
+      console.error("[v0] addProduct: Error from Supabase:", error)
       return null
     }
+    
+    console.log("[v0] addProduct: Successfully saved to Supabase, received data:", data)
     
     const newProduct = normalizeProduct(data)
     setProducts(prev => [newProduct, ...prev])
