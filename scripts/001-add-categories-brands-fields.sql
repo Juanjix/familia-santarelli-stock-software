@@ -23,10 +23,23 @@ CREATE TABLE IF NOT EXISTS brands (
 
 -- Add new columns to products table
 ALTER TABLE products 
-ADD COLUMN IF NOT EXISTS factory_code TEXT,
-ADD COLUMN IF NOT EXISTS internal_code TEXT,
-ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories(id),
-ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id);
+ADD COLUMN IF NOT EXISTS factory_code TEXT;
+
+ALTER TABLE products 
+ADD COLUMN IF NOT EXISTS internal_code TEXT;
+
+ALTER TABLE products 
+ADD COLUMN IF NOT EXISTS category_id UUID;
+
+ALTER TABLE products 
+ADD COLUMN IF NOT EXISTS brand_id UUID;
+
+-- Add foreign key constraints
+ALTER TABLE products
+ADD CONSTRAINT fk_products_category_id FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL;
+
+ALTER TABLE products
+ADD CONSTRAINT fk_products_brand_id FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE SET NULL;
 
 -- Seed default categories (based on existing hardcoded values)
 INSERT INTO categories (name) VALUES
@@ -46,12 +59,7 @@ INSERT INTO brands (name) VALUES
   ('Otro')
 ON CONFLICT (name) DO NOTHING;
 
--- Seed default warehouses if they don't exist
-INSERT INTO warehouses (name, description, is_active, stock_count, total_value) VALUES
-  ('Shopping', 'Depósito principal en el shopping', true, 0, 0),
-  ('Galeria Plaza', 'Depósito en Galeria Plaza', true, 0, 0),
-  ('Web', 'Depósito para ventas online', true, 0, 0)
-ON CONFLICT DO NOTHING;
+-- Note: Default warehouses already exist from initialization script
 
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
