@@ -81,6 +81,7 @@ interface InventoryContextType {
   getProductById: (id: string) => Product | undefined
   addWarehouse: (warehouse: Partial<Warehouse>) => Promise<void>
   updateWarehouse: (id: string, updates: Partial<Warehouse>) => Promise<void>
+  deleteWarehouse: (id: string) => Promise<void>
   addSupplier: (supplier: Partial<Supplier>) => Promise<Supplier | null>
   addCategory: (category: Partial<Category>) => Promise<Category | null>
   updateCategory: (id: string, updates: Partial<Category>) => Promise<void>
@@ -368,6 +369,17 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     ))
   }, [supabase])
 
+  const deleteWarehouse = useCallback(async (id: string) => {
+    const { error } = await supabase.from("warehouses").delete().eq("id", id)
+    
+    if (error) {
+      console.error("Error deleting warehouse:", error)
+      return
+    }
+    
+    setWarehouses(prev => prev.filter(w => w.id !== id))
+  }, [supabase])
+
   const addSupplier = useCallback(async (supplier: Partial<Supplier>): Promise<Supplier | null> => {
     const { data, error } = await supabase
       .from("suppliers")
@@ -555,6 +567,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       getProductById,
       addWarehouse,
       updateWarehouse,
+      deleteWarehouse,
       addSupplier,
       addCategory,
       updateCategory,

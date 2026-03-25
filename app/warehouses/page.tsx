@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import type { Warehouse } from "@/lib/types"
-import { MoreHorizontal, Pencil, Power, Warehouse as WarehouseIcon, Package, DollarSign } from "lucide-react"
+import { MoreHorizontal, Pencil, Power, Trash2, Warehouse as WarehouseIcon, Package, DollarSign } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 function formatCurrency(value: number): string {
@@ -38,9 +38,10 @@ function formatNumber(value: number): string {
 }
 
 export default function WarehousesPage() {
-  const { warehouses, addWarehouse, updateWarehouse, loading } = useInventory()
+  const { warehouses, addWarehouse, updateWarehouse, deleteWarehouse, loading } = useInventory()
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null)
+  const [deletingWarehouse, setDeletingWarehouse] = useState<Warehouse | null>(null)
   const [formData, setFormData] = useState({ name: "", description: "" })
   const [saving, setSaving] = useState(false)
 
@@ -91,6 +92,18 @@ export default function WarehousesPage() {
   const openEditDialog = (warehouse: Warehouse) => {
     setEditingWarehouse(warehouse)
     setFormData({ name: warehouse.name, description: warehouse.description || "" })
+  }
+
+  const handleDeleteWarehouse = async () => {
+    if (!deletingWarehouse) return
+    
+    setSaving(true)
+    try {
+      await deleteWarehouse(deletingWarehouse.id)
+      setDeletingWarehouse(null)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const totalStock = warehouses.reduce((acc, w) => acc + (w.stock_count || w.stockCount || 0), 0)
@@ -201,6 +214,14 @@ export default function WarehousesPage() {
                           <Power className="mr-2 h-4 w-4" />
                           {isActive ? "Desactivar" : "Activar"}
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => setDeletingWarehouse(warehouse)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Eliminar
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -306,6 +327,27 @@ export default function WarehousesPage() {
             </Button>
             <Button onClick={handleEditWarehouse} disabled={saving || !formData.name.trim()}>
               {saving ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialogo de Eliminar */}
+      <Dialog open={!!deletingWarehouse} onOpenChange={() => setDeletingWarehouse(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar Deposito</DialogTitle>
+            <DialogDescription>
+              Esta accion no se puede deshacer. Se eliminara permanentemente el deposito 
+              <strong> {deletingWarehouse?.name}</strong> y todos sus datos asociados.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingWarehouse(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteWarehouse} disabled={saving}>
+              {saving ? "Eliminando..." : "Eliminar Deposito"}
             </Button>
           </DialogFooter>
         </DialogContent>
