@@ -44,7 +44,7 @@ function generateBarcode(): string {
 }
 
 export default function ProductsPage() {
-  const { products, suppliers, categories, brands, warehouses, addProduct, updateProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
+  const { products, suppliers, categories, brands, warehouses, addProduct, updateProduct, deleteProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("Todos")
   const [material, setMaterial] = useState("Todos")
@@ -54,6 +54,7 @@ export default function ProductsPage() {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null)
   const [saving, setSaving] = useState(false)
   
   // Form state
@@ -263,6 +264,17 @@ export default function ProductsPage() {
     toggleProductStatus(productId)
   }
 
+  const handleDeleteProduct = async () => {
+    if (!deletingProduct) return
+    setSaving(true)
+    try {
+      await deleteProduct(deletingProduct.id)
+      setDeletingProduct(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <>
@@ -332,6 +344,7 @@ export default function ProductsPage() {
             products={paginatedProducts} 
             onEdit={openEditDialog}
             onToggleStatus={handleToggleStatus}
+            onDelete={setDeletingProduct}
           />
 
           {totalPages > 1 && (
@@ -395,6 +408,27 @@ export default function ProductsPage() {
           )}
         </div>
       </div>
+
+      {/* Delete Product Dialog */}
+      <Dialog open={!!deletingProduct} onOpenChange={() => setDeletingProduct(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar Producto</DialogTitle>
+            <DialogDescription>
+              Esta accion no se puede deshacer. Se eliminara permanentemente el producto{" "}
+              <strong>{deletingProduct?.name}</strong> y todos sus datos asociados.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingProduct(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteProduct} disabled={saving}>
+              {saving ? "Eliminando..." : "Eliminar Producto"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Product Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>

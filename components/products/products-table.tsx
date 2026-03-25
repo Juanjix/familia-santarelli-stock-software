@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Pencil, Eye, Tag, ArrowUpDown, Power, PowerOff, ChevronRight } from "lucide-react"
+import { MoreHorizontal, Pencil, Eye, Tag, ArrowUpDown, Power, PowerOff, Trash2, ChevronRight } from "lucide-react"
 import type { Product } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -28,6 +28,7 @@ interface ProductsTableProps {
   products: Product[]
   onEdit?: (product: Product) => void
   onToggleStatus?: (productId: string) => void
+  onDelete?: (product: Product) => void
 }
 
 const stockStatusConfig = {
@@ -40,7 +41,7 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(value)
 }
 
-export function ProductsTable({ products, onEdit, onToggleStatus }: ProductsTableProps) {
+export function ProductsTable({ products, onEdit, onToggleStatus, onDelete }: ProductsTableProps) {
   const [sortField, setSortField] = useState<string>("name")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
 
@@ -115,6 +116,14 @@ export function ProductsTable({ products, onEdit, onToggleStatus }: ProductsTabl
                 Activar
               </>
             )}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => onDelete?.(product)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar Producto
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
