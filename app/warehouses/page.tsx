@@ -84,8 +84,8 @@ export default function WarehousesPage() {
   const handleToggleActive = async (id: string) => {
     const warehouse = warehouses.find(w => w.id === id)
     if (warehouse) {
-      const isActive = warehouse.is_active !== false
-      await updateWarehouse(id, { is_active: !isActive })
+      const isActive = warehouse.isActive !== false
+      await updateWarehouse(id, { isActive: !isActive })
     }
   }
 
@@ -108,7 +108,7 @@ export default function WarehousesPage() {
 
   const totalStock = warehouses.reduce((acc, w) => acc + (w.stock_count || w.stockCount || 0), 0)
   const totalValue = warehouses.reduce((acc, w) => acc + (w.total_value || w.totalValue || 0), 0)
-  const activeWarehouses = warehouses.filter((w) => w.is_active !== false).length
+  const activeWarehouses = warehouses.filter((w) => w.isActive !== false).length
 
   if (loading) {
     return (
@@ -182,7 +182,7 @@ export default function WarehousesPage() {
         {/* Grilla de Depositos */}
         <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {warehouses.map((warehouse) => {
-            const isActive = warehouse.is_active !== false
+            const isActive = warehouse.isActive !== false
             const stockCount = warehouse.stock_count || warehouse.stockCount || 0
             const totalValue = warehouse.total_value || warehouse.totalValue || 0
             const maxStock = Math.max(...warehouses.map(w => w.stock_count || w.stockCount || 1), 1)
