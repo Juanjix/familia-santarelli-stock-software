@@ -44,14 +44,33 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-64"
       )}
     >
-      <div className="flex h-16 items-center justify-center border-b border-sidebar-border px-4 gap-3 md:justify-start">
-        <Logo href="/" size="md" className="h-9 w-9" />
-        {!collapsed && (
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">Familia Santarelli</span>
-            <span className="text-[11px] text-muted-foreground tracking-wide uppercase">Sistema de Stock</span>
-          </div>
-        )}
+      <div className="border-b border-sidebar-border px-6 py-6">
+        <div className={cn(
+          "flex flex-col items-center transition-all duration-300",
+          collapsed && "items-center"
+        )}>
+          {/* Logo grande - elemento principal */}
+          <Logo 
+            href="/" 
+            size={collapsed ? "sm" : "lg"} 
+            className={cn(
+              "transition-all duration-300",
+              collapsed ? "h-8 w-8" : "h-14 w-14"
+            )} 
+          />
+          
+          {/* Textos de marca - solo visible cuando no está collapsed */}
+          {!collapsed && (
+            <div className="flex flex-col items-center mt-4 text-center">
+              <span className="text-sm font-semibold tracking-tight text-sidebar-foreground leading-tight">
+                Familia Santarelli
+              </span>
+              <span className="text-[10px] text-muted-foreground tracking-widest uppercase mt-1">
+                Sistema de Stock
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-4">
