@@ -19,12 +19,6 @@ const sizeMap = {
   xl: { height: 140, width: 140 }, // Extra large - 3x bigger than original
 }
 
-const sizeMap = {
-  sm: { height: 32, width: 32 }, // For sidebar when collapsed
-  md: { height: 36, width: 36 }, // For sidebar expanded
-  lg: { height: 56, width: 56 }, // For login/auth pages
-}
-
 export function Logo({ href = "/", size = "md", className }: LogoProps) {
   const sizeConfig = sizeMap[size]
   const { theme, resolvedTheme } = useTheme()
