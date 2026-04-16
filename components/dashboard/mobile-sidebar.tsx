@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/logo"
 
 const navigation = [
   { name: "Panel", href: "/", icon: LayoutDashboard },
@@ -72,18 +73,14 @@ export function MobileSidebar() {
     <Sheet open={isOpen} onOpenChange={(open) => !open && close()}>
       <SheetContent side="left" className="w-72 p-0 bg-sidebar">
         <SheetHeader className="border-b border-sidebar-border px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-3" onClick={close}>
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
-                <span className="text-sm font-semibold tracking-tight text-primary-foreground">FS</span>
-              </div>
-              <div className="flex flex-col">
-                <SheetTitle className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-                  Familia Santarelli
-                </SheetTitle>
-                <span className="text-[11px] text-muted-foreground tracking-wide uppercase">Sistema de Stock</span>
-              </div>
-            </Link>
+          <div className="flex items-center gap-3">
+            <Logo href="/" size="md" className="h-9 w-9" />
+            <div className="flex flex-col min-w-0">
+              <SheetTitle className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+                Familia Santarelli
+              </SheetTitle>
+              <span className="text-[11px] text-muted-foreground tracking-wide uppercase">Sistema de Stock</span>
+            </div>
           </div>
         </SheetHeader>
 

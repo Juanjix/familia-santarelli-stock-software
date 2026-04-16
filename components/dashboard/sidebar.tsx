@@ -17,6 +17,7 @@ import {
   Boxes,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/logo"
 import { useState } from "react"
 
 const navigation = [
@@ -43,18 +44,14 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-64"
       )}
     >
-      <div className="flex h-16 items-center border-b border-sidebar-border px-4">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
-            <span className="text-sm font-semibold tracking-tight text-primary-foreground">FS</span>
+      <div className="flex h-16 items-center justify-center border-b border-sidebar-border px-4 gap-3 md:justify-start">
+        <Logo href="/" size="md" className="h-9 w-9" />
+        {!collapsed && (
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">Familia Santarelli</span>
+            <span className="text-[11px] text-muted-foreground tracking-wide uppercase">Sistema de Stock</span>
           </div>
-          {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">Familia Santarelli</span>
-              <span className="text-[11px] text-muted-foreground tracking-wide uppercase">Sistema de Stock</span>
-            </div>
-          )}
-        </Link>
+        )}
       </div>
 
       <nav className="flex-1 space-y-0.5 px-2 py-4">
