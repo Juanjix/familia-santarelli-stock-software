@@ -44,28 +44,28 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-64"
       )}
     >
-      <div className="border-b border-sidebar-border px-6 py-6">
+      <div className="border-b border-sidebar-border px-6 py-8">
         <div className={cn(
           "flex flex-col items-center transition-all duration-300",
           collapsed && "items-center"
         )}>
-          {/* Logo grande - elemento principal */}
+          {/* Logo gigante - elemento principal con background transparente */}
           <Logo 
             href="/" 
-            size={collapsed ? "sm" : "lg"} 
+            size={collapsed ? "sm" : "xl"} 
             className={cn(
               "transition-all duration-300",
-              collapsed ? "h-8 w-8" : "h-14 w-14"
+              collapsed ? "h-8 w-8" : "h-32 w-32"
             )} 
           />
           
           {/* Textos de marca - solo visible cuando no está collapsed */}
           {!collapsed && (
-            <div className="flex flex-col items-center mt-4 text-center">
-              <span className="text-sm font-semibold tracking-tight text-sidebar-foreground leading-tight">
+            <div className="flex flex-col items-center mt-6 text-center">
+              <span className="text-lg font-semibold tracking-tight text-sidebar-foreground leading-tight">
                 Familia Santarelli
               </span>
-              <span className="text-[10px] text-muted-foreground tracking-widest uppercase mt-1">
+              <span className="text-[11px] text-muted-foreground tracking-widest uppercase mt-2">
                 Sistema de Stock
               </span>
             </div>

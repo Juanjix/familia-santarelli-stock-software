@@ -72,21 +72,21 @@ export function MobileSidebar() {
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && close()}>
       <SheetContent side="left" className="w-72 p-0 bg-sidebar">
-        <SheetHeader className="border-b border-sidebar-border px-6 py-6">
+        <SheetHeader className="border-b border-sidebar-border px-6 py-8">
           <div className="flex flex-col items-center text-center">
-            {/* Logo grande */}
+            {/* Logo grande con background transparente */}
             <Logo 
               href="/" 
-              size="md" 
-              className="h-10 w-10"
+              size="lg" 
+              className="h-20 w-20"
             />
             
             {/* Textos de marca */}
-            <div className="flex flex-col items-center mt-3">
-              <SheetTitle className="text-sm font-semibold tracking-tight text-sidebar-foreground leading-tight">
+            <div className="flex flex-col items-center mt-4">
+              <SheetTitle className="text-base font-semibold tracking-tight text-sidebar-foreground leading-tight">
                 Familia Santarelli
               </SheetTitle>
-              <span className="text-[10px] text-muted-foreground tracking-widest uppercase mt-1">
+              <span className="text-[11px] text-muted-foreground tracking-widest uppercase mt-2">
                 Sistema de Stock
               </span>
             </div>
