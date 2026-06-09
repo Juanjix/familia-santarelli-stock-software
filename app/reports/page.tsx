@@ -29,21 +29,22 @@ export default function ReportsPage() {
 
   const stats = useMemo(() => {
     const totalProducts = products.length
-    const activeProducts = products.filter(p => p.isActive).length
-    const totalStock = products.reduce((sum, p) => sum + p.totalStock, 0)
-    const totalValue = products.reduce((sum, p) => sum + (p.totalStock * p.price), 0)
+    const activeProducts = products.filter(p => p.is_active).length
+    const totalStock = products.reduce((sum, p) => sum + (p.total_stock || 0), 0)
+    const totalValue = products.reduce((sum, p) => sum + ((p.total_stock || 0) * (p.sell_price || 0)), 0)
     const lowStockProducts = products.filter(p => p.stockStatus === "low_stock")
     const outOfStockProducts = products.filter(p => p.stockStatus === "out_of_stock")
-    
+
     // Category breakdown
     const byCategory = products.reduce((acc, p) => {
-      acc[p.category] = (acc[p.category] || 0) + p.totalStock
+      acc[p.category] = (acc[p.category] || 0) + (p.total_stock || 0)
       return acc
     }, {} as Record<string, number>)
 
     // Material breakdown
     const byMaterial = products.reduce((acc, p) => {
-      acc[p.material] = (acc[p.material] || 0) + p.totalStock
+      const mat = p.material || "Sin material"
+      acc[mat] = (acc[mat] || 0) + (p.total_stock || 0)
       return acc
     }, {} as Record<string, number>)
 
@@ -83,7 +84,7 @@ export default function ReportsPage() {
         const whStock = stockByWh.find(s => s.warehouseId === warehouse.id)
         if (whStock) {
           stockCount += whStock.quantity
-          valueSum += whStock.quantity * product.price
+          valueSum += whStock.quantity * (product.sell_price || product.price || 0)
         }
       })
       return {
@@ -189,7 +190,7 @@ export default function ReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-red-500">-{stats.todayExits}</div>
+              <div className="text-3xl font-bold text-red-500">{stats.todayExits > 0 ? `-${stats.todayExits}` : "0"}</div>
               <p className="text-sm text-muted-foreground">unidades egresadas</p>
             </CardContent>
           </Card>
@@ -294,7 +295,7 @@ export default function ReportsPage() {
                       </TableCell>
                       <TableCell>{product.category}</TableCell>
                       <TableCell className="text-right font-semibold">
-                        {product.totalStock}
+                        {product.total_stock ?? 0}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">Stock Bajo</Badge>
