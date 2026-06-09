@@ -477,20 +477,20 @@ export default function ProductsPage() {
           if (!open) resetForm()
         }
       }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-lg flex flex-col max-h-[90dvh] sm:max-h-[85dvh]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>
               {editingProduct ? "Editar Producto" : "Nuevo Producto"}
             </DialogTitle>
             <DialogDescription>
-              {editingProduct 
+              {editingProduct
                 ? "Modifique los datos del producto"
                 : "Complete los datos para crear un nuevo producto"
               }
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
+
+          <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-1">
             <div className="grid gap-2">
               <Label>Nombre</Label>
               <Input
@@ -792,7 +792,7 @@ export default function ProductsPage() {
             )}
           </div>
           
-          <DialogFooter>
+          <DialogFooter className="shrink-0 pt-2">
             <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>
               Cancelar
             </Button>
