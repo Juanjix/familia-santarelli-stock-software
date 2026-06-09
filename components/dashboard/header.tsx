@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, KeyboardEvent } from "react"
+import { useState, useEffect, useRef, KeyboardEvent, Suspense } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Search, Plus, Bell, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -17,19 +17,18 @@ interface HeaderProps {
   }
 }
 
-export function Header({ title, description, action }: HeaderProps) {
-  const { open } = useMobileSidebar()
+// Componente interno que usa useSearchParams — debe estar dentro de <Suspense>
+// para no bloquear el prerendering estático de las páginas que usan <Header>.
+function HeaderSearch() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Inicializar el input con el valor actual de la URL cuando estamos en /products
   const [inputValue, setInputValue] = useState(() =>
     pathname === "/products" ? (searchParams.get("q") || "") : ""
   )
 
-  // Sincronizar si navegamos a /products desde fuera (ej: el usuario borra el param manualmente)
   useEffect(() => {
     if (pathname === "/products") {
       setInputValue(searchParams.get("q") || "")
@@ -41,7 +40,6 @@ export function Header({ title, description, action }: HeaderProps) {
   const handleSearch = () => {
     const term = inputValue.trim()
     if (pathname === "/products") {
-      // Ya estamos en productos — actualizar URL sin push al historial
       const params = new URLSearchParams(searchParams.toString())
       if (term) {
         params.set("q", term)
@@ -50,7 +48,6 @@ export function Header({ title, description, action }: HeaderProps) {
       }
       router.replace(`/products?${params.toString()}`)
     } else {
-      // Navegar a productos con el término
       router.push(term ? `/products?q=${encodeURIComponent(term)}` : "/products")
     }
   }
@@ -67,9 +64,42 @@ export function Header({ title, description, action }: HeaderProps) {
   }
 
   return (
+    <>
+      {/* Desktop search input */}
+      <InputGroup className="hidden lg:flex w-72">
+        <InputGroupAddon>
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+        </InputGroupAddon>
+        <InputGroupInput
+          ref={inputRef}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Buscar productos, SKU..."
+          className="h-8 bg-muted/50 border-0 text-sm focus:bg-muted"
+        />
+      </InputGroup>
+
+      {/* Mobile: ícono que navega directo a /products */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 text-muted-foreground hover:text-foreground lg:hidden"
+        onClick={() => router.push("/products")}
+      >
+        <Search className="h-4 w-4" />
+        <span className="sr-only">Buscar productos</span>
+      </Button>
+    </>
+  )
+}
+
+export function Header({ title, description, action }: HeaderProps) {
+  const { open } = useMobileSidebar()
+
+  return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4 md:px-6 gap-3">
       <div className="flex items-center gap-3 min-w-0">
-        {/* Mobile menu button */}
         <Button
           variant="ghost"
           size="icon"
@@ -87,49 +117,28 @@ export function Header({ title, description, action }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
-        {/* Search — visible en desktop, navega a /products al presionar Enter */}
-        <InputGroup className="hidden lg:flex w-72">
-          <InputGroupAddon>
-            <Search className="h-3.5 w-3.5 text-muted-foreground" />
-          </InputGroupAddon>
-          <InputGroupInput
-            ref={inputRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Buscar productos, SKU..."
-            className="h-8 bg-muted/50 border-0 text-sm focus:bg-muted"
-          />
-        </InputGroup>
+        {/* Suspense necesario: useSearchParams dentro de HeaderSearch
+            requiere un boundary para no bloquear el prerendering estático */}
+        <Suspense fallback={
+          <div className="hidden lg:flex w-72 h-8 rounded-md bg-muted/50" />
+        }>
+          <HeaderSearch />
+        </Suspense>
 
         <div className="flex items-center gap-0.5">
-          {/* Search icon on mobile — navega a /products */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 text-muted-foreground hover:text-foreground lg:hidden"
-            onClick={() => router.push("/products")}
-          >
-            <Search className="h-4 w-4" />
-            <span className="sr-only">Buscar productos</span>
-          </Button>
-
           <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground hidden sm:flex">
             <Bell className="h-4 w-4" />
             <span className="sr-only">Notificaciones</span>
           </Button>
-
           <ThemeToggle />
         </div>
 
         {action && (
           <>
-            {/* Full button on tablet+ */}
             <Button onClick={action.onClick} size="sm" className="hidden sm:flex ml-2 h-8 text-xs">
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               {action.label}
             </Button>
-            {/* Icon-only button on mobile */}
             <Button onClick={action.onClick} size="icon" className="sm:hidden h-9 w-9">
               <Plus className="h-4 w-4" />
               <span className="sr-only">{action.label}</span>

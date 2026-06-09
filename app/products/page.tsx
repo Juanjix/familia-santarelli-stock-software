@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
@@ -54,7 +54,7 @@ function generateBarcode(): string {
   return `78${Math.random().toString().slice(2, 14)}`
 }
 
-export default function ProductsPage() {
+function ProductsPageInner() {
   const { products, suppliers, categories, brands, warehouses, addProduct, updateProduct, deleteProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
   const searchParams = useSearchParams()
   const [search, setSearch] = useState(() => searchParams.get("q") || "")
@@ -833,5 +833,13 @@ export default function ProductsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  )
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense>
+      <ProductsPageInner />
+    </Suspense>
   )
 }
