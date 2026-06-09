@@ -20,6 +20,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -80,6 +90,14 @@ export default function ProductsPage() {
   // Stock inicial (solo al crear)
   const [formInitialWarehouse, setFormInitialWarehouse] = useState("")
   const [formInitialStock, setFormInitialStock] = useState("")
+  // Sticky form values — se recuerdan entre productos consecutivos
+  const [stickyCategory, setStickyCategory] = useState("")
+  const [stickyBrand, setStickyBrand] = useState("")
+  const [stickyMaterial, setStickyMaterial] = useState("")
+  const [stickySupplierId, setStickySupplierId] = useState("")
+  const [stickyInitialWarehouse, setStickyInitialWarehouse] = useState("")
+  // Confirmación al cerrar con datos sin guardar
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
 
   const categoryNames = useMemo(() => {
     const catList = categories.length > 0 
@@ -151,6 +169,11 @@ export default function ProductsPage() {
 
   const openCreateDialog = () => {
     resetForm()
+    setFormCategory(stickyCategory)
+    setFormBrand(stickyBrand)
+    setFormMaterial(stickyMaterial)
+    setFormSupplierId(stickySupplierId)
+    setFormInitialWarehouse(stickyInitialWarehouse)
     setDialogOpen(true)
   }
 
@@ -259,6 +282,13 @@ export default function ProductsPage() {
         if (newProduct && formInitialWarehouse && formInitialStock && parseInt(formInitialStock) > 0) {
           await adjustStock(newProduct.id, formInitialWarehouse, parseInt(formInitialStock), "in", "Stock inicial")
         }
+
+        // Recordar valores para el próximo producto
+        setStickyCategory(formCategory)
+        setStickyBrand(formBrand)
+        setStickyMaterial(formMaterial)
+        setStickySupplierId(formSupplierId)
+        setStickyInitialWarehouse(formInitialWarehouse)
       }
 
       setDialogOpen(false)
@@ -439,7 +469,14 @@ export default function ProductsPage() {
       </Dialog>
 
       {/* Create/Edit Product Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        if (!open && (formName || formBarcode || formPrice)) {
+          setConfirmCloseOpen(true)
+        } else {
+          setDialogOpen(open)
+          if (!open) resetForm()
+        }
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
@@ -457,6 +494,7 @@ export default function ProductsPage() {
             <div className="grid gap-2">
               <Label>Nombre</Label>
               <Input
+                autoFocus
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="Nombre del producto"
@@ -767,6 +805,24 @@ export default function ProductsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmación al cerrar con datos sin guardar */}
+      <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Descartar producto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hay datos ingresados que no se guardaron. Si cerrás ahora, se perderán.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmCloseOpen(false); setDialogOpen(false); resetForm(); }}>
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
