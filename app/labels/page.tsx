@@ -181,10 +181,10 @@ export default function LabelsPage() {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
       <Header title="Etiquetas" />
-      
-      <main className="flex-1 p-6">
+
+      <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-1 items-center gap-4">
             <div className="relative flex-1 max-w-md">

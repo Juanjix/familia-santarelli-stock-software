@@ -98,10 +98,10 @@ export default function ReportsPage() {
   const totalWarehouseStock = warehouseStats.reduce((sum, w) => sum + w.calculatedStock, 0)
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
       <Header title="Reportes" />
-      
-      <main className="flex-1 p-6">
+
+      <main className="flex-1 overflow-auto p-4 md:p-6">
         {/* Overview Cards */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>

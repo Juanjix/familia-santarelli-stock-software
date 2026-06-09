@@ -20,16 +20,22 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 
-const navigation = [
+const navOperacion = [
   { name: "Panel", href: "/", icon: LayoutDashboard },
+  { name: "Escanear", href: "/scan", icon: ScanLine },
   { name: "Productos", href: "/products", icon: Package },
   { name: "Inventario", href: "/inventory", icon: Boxes },
-  { name: "Depósitos", href: "/warehouses", icon: Warehouse },
-  { name: "Etiquetas", href: "/labels", icon: Tags },
-  { name: "Escanear", href: "/scan", icon: ScanLine },
-  { name: "Movimientos", href: "/movements", icon: ArrowLeftRight },
   { name: "Ticket de Cambio", href: "/coupons", icon: Ticket },
+]
+
+const navGestion = [
+  { name: "Movimientos", href: "/movements", icon: ArrowLeftRight },
   { name: "Reportes", href: "/reports", icon: BarChart3 },
+]
+
+const navConfiguracion = [
+  { name: "Etiquetas", href: "/labels", icon: Tags },
+  { name: "Depósitos", href: "/warehouses", icon: Warehouse },
   { name: "Configuración", href: "/settings", icon: Settings },
 ]
 
@@ -87,29 +93,41 @@ export function MobileSidebar() {
           </div>
         </SheetHeader>
 
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={close}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                )}
-              >
-                <item.icon className={cn(
-                  "h-5 w-5 shrink-0",
-                  isActive ? "text-sidebar-primary" : "text-muted-foreground"
-                )} />
-                <span>{item.name}</span>
-              </Link>
-            )
-          })}
+        <nav className="flex-1 overflow-y-auto px-3 py-3">
+          {[
+            { label: "Operación", items: navOperacion },
+            { label: "Gestión", items: navGestion },
+            { label: "Configuración", items: navConfiguracion },
+          ].map((group, gi) => (
+            <div key={group.label}>
+              {gi > 0 && <div className="my-2 border-t border-sidebar-border" />}
+              <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                {group.label}
+              </p>
+              {group.items.map((item) => {
+                const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={close}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                    )}
+                  >
+                    <item.icon className={cn(
+                      "h-5 w-5 shrink-0",
+                      isActive ? "text-sidebar-primary" : "text-muted-foreground"
+                    )} />
+                    <span>{item.name}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          ))}
         </nav>
       </SheetContent>
     </Sheet>
