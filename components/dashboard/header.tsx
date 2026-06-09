@@ -1,5 +1,7 @@
 "use client"
 
+import { useState, useEffect, useRef, KeyboardEvent } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Search, Plus, Bell, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupInput, InputGroupAddon } from "@/components/ui/input-group"
@@ -17,21 +19,67 @@ interface HeaderProps {
 
 export function Header({ title, description, action }: HeaderProps) {
   const { open } = useMobileSidebar()
-  
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Inicializar el input con el valor actual de la URL cuando estamos en /products
+  const [inputValue, setInputValue] = useState(() =>
+    pathname === "/products" ? (searchParams.get("q") || "") : ""
+  )
+
+  // Sincronizar si navegamos a /products desde fuera (ej: el usuario borra el param manualmente)
+  useEffect(() => {
+    if (pathname === "/products") {
+      setInputValue(searchParams.get("q") || "")
+    } else {
+      setInputValue("")
+    }
+  }, [pathname, searchParams])
+
+  const handleSearch = () => {
+    const term = inputValue.trim()
+    if (pathname === "/products") {
+      // Ya estamos en productos — actualizar URL sin push al historial
+      const params = new URLSearchParams(searchParams.toString())
+      if (term) {
+        params.set("q", term)
+      } else {
+        params.delete("q")
+      }
+      router.replace(`/products?${params.toString()}`)
+    } else {
+      // Navegar a productos con el término
+      router.push(term ? `/products?q=${encodeURIComponent(term)}` : "/products")
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleSearch()
+    }
+    if (e.key === "Escape") {
+      setInputValue("")
+      inputRef.current?.blur()
+    }
+  }
+
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4 md:px-6 gap-3">
       <div className="flex items-center gap-3 min-w-0">
         {/* Mobile menu button */}
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-9 w-9 shrink-0 md:hidden" 
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0 md:hidden"
           onClick={open}
         >
           <Menu className="h-5 w-5" />
           <span className="sr-only">Abrir menú</span>
         </Button>
-        
+
         <div className="flex flex-col min-w-0">
           <h1 className="text-base font-semibold tracking-tight text-foreground truncate">{title}</h1>
           {description && <p className="text-xs text-muted-foreground truncate hidden sm:block">{description}</p>}
@@ -39,24 +87,33 @@ export function Header({ title, description, action }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
-        {/* Search - hidden on mobile, visible on tablet+ */}
+        {/* Search — visible en desktop, navega a /products al presionar Enter */}
         <InputGroup className="hidden lg:flex w-72">
           <InputGroupAddon>
             <Search className="h-3.5 w-3.5 text-muted-foreground" />
           </InputGroupAddon>
-          <InputGroupInput 
-            placeholder="Buscar productos, SKU..." 
-            className="h-8 bg-muted/50 border-0 text-sm focus:bg-muted" 
+          <InputGroupInput
+            ref={inputRef}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Buscar productos, SKU..."
+            className="h-8 bg-muted/50 border-0 text-sm focus:bg-muted"
           />
         </InputGroup>
 
         <div className="flex items-center gap-0.5">
-          {/* Search icon on mobile */}
-          <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground lg:hidden">
+          {/* Search icon on mobile — navega a /products */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 text-muted-foreground hover:text-foreground lg:hidden"
+            onClick={() => router.push("/products")}
+          >
             <Search className="h-4 w-4" />
-            <span className="sr-only">Buscar</span>
+            <span className="sr-only">Buscar productos</span>
           </Button>
-          
+
           <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground hidden sm:flex">
             <Bell className="h-4 w-4" />
             <span className="sr-only">Notificaciones</span>

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { ProductsTable } from "@/components/products/products-table"
@@ -55,11 +56,19 @@ function generateBarcode(): string {
 
 export default function ProductsPage() {
   const { products, suppliers, categories, brands, warehouses, addProduct, updateProduct, deleteProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
-  const [search, setSearch] = useState("")
+  const searchParams = useSearchParams()
+  const [search, setSearch] = useState(() => searchParams.get("q") || "")
   const [category, setCategory] = useState("Todos")
   const [material, setMaterial] = useState("Todos")
   const [stockStatus, setStockStatus] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
+
+  // Sincronizar búsqueda cuando el param ?q= cambia desde el header global
+  useEffect(() => {
+    const q = searchParams.get("q") || ""
+    setSearch(q)
+    setCurrentPage(1)
+  }, [searchParams])
   
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
