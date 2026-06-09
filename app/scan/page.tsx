@@ -379,13 +379,24 @@ export default function ScanPage() {
                       <SelectValue placeholder="Seleccionar origen" />
                     </SelectTrigger>
                     <SelectContent>
-                      {activeWarehouses.map(warehouse => (
-                        <SelectItem key={warehouse.id} value={warehouse.id}>
-                          {warehouse.name}
-                        </SelectItem>
-                      ))}
+                      {activeWarehouses.map(warehouse => {
+                        const stock = stockByWarehouse.find(s => s.warehouseId === warehouse.id)
+                        return (
+                          <SelectItem key={warehouse.id} value={warehouse.id}>
+                            {warehouse.name}{stock ? ` — ${stock.quantity} ud.` : " — sin stock"}
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
+                  {fromWarehouse && (() => {
+                    const stock = stockByWarehouse.find(s => s.warehouseId === fromWarehouse)
+                    return stock && stock.quantity > 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Disponible: <span className="font-medium text-foreground">{stock.quantity} unidades</span>
+                      </p>
+                    ) : null
+                  })()}
                 </div>
                 <div className="grid gap-2">
                   <Label>Hacia depósito</Label>

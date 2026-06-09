@@ -211,6 +211,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         total_stock: 0,
         is_active: product.is_active !== false,
         supplier_id: product.supplier_id || null,
+        category_id: product.category_id || null,
+        brand_id: product.brand_id || null,
+        factory_code: product.factory_code || null,
+        internal_code: product.internal_code || null,
       })
       .select(`*, suppliers(id, name, contact, created_at)`)
       .single()
@@ -242,6 +246,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         ...(updates.min_stock !== undefined && { min_stock: updates.min_stock }),
         ...(updates.is_active !== undefined && { is_active: updates.is_active }),
         ...(updates.supplier_id !== undefined && { supplier_id: updates.supplier_id }),
+        ...(updates.category_id !== undefined && { category_id: updates.category_id }),
+        ...(updates.brand_id !== undefined && { brand_id: updates.brand_id }),
+        ...(updates.factory_code !== undefined && { factory_code: updates.factory_code }),
+        ...(updates.internal_code !== undefined && { internal_code: updates.internal_code }),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

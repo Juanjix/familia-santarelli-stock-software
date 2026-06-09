@@ -59,16 +59,16 @@ export default function InventoryPage() {
     })
   }, [products, search, warehouseFilter, getStockByWarehouse])
 
-  const handleAdjust = () => {
+  const handleAdjust = async () => {
     if (!adjustDialog.productId || !selectedWarehouse || !quantity) return
-    adjustStock(adjustDialog.productId, selectedWarehouse, parseInt(quantity), adjustDialog.type, notes || undefined)
+    await adjustStock(adjustDialog.productId, selectedWarehouse, parseInt(quantity), adjustDialog.type, notes || undefined)
     setAdjustDialog({ open: false, productId: null, type: "in" })
     resetForm()
   }
 
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
     if (!transferDialog.productId || !fromWarehouse || !toWarehouse || !quantity) return
-    transferStock(transferDialog.productId, fromWarehouse, toWarehouse, parseInt(quantity), notes || undefined)
+    await transferStock(transferDialog.productId, fromWarehouse, toWarehouse, parseInt(quantity), notes || undefined)
     setTransferDialog({ open: false, productId: null })
     resetForm()
   }

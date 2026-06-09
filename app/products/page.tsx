@@ -62,6 +62,7 @@ export default function ProductsPage() {
   const [formCategory, setFormCategory] = useState("")
   const [formBrand, setFormBrand] = useState("")
   const [formMaterial, setFormMaterial] = useState("")
+  const [formBarcode, setFormBarcode] = useState("")
   const [formPrice, setFormPrice] = useState("")
   const [formCostPrice, setFormCostPrice] = useState("")
   const [formWeight, setFormWeight] = useState("")
@@ -76,6 +77,9 @@ export default function ProductsPage() {
   const [showNewSupplierInput, setShowNewSupplierInput] = useState(false)
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false)
   const [showNewBrandInput, setShowNewBrandInput] = useState(false)
+  // Stock inicial (solo al crear)
+  const [formInitialWarehouse, setFormInitialWarehouse] = useState("")
+  const [formInitialStock, setFormInitialStock] = useState("")
 
   const categoryNames = useMemo(() => {
     const catList = categories.length > 0 
@@ -125,6 +129,7 @@ export default function ProductsPage() {
     setFormCategory("")
     setFormBrand("")
     setFormMaterial("")
+    setFormBarcode("")
     setFormPrice("")
     setFormCostPrice("")
     setFormWeight("")
@@ -139,6 +144,8 @@ export default function ProductsPage() {
     setShowNewSupplierInput(false)
     setShowNewCategoryInput(false)
     setShowNewBrandInput(false)
+    setFormInitialWarehouse("")
+    setFormInitialStock("")
     setEditingProduct(null)
   }
 
@@ -153,6 +160,7 @@ export default function ProductsPage() {
     setFormCategory(product.category)
     setFormBrand(product.brand_id || "")
     setFormMaterial(product.material || "")
+    setFormBarcode(product.barcode || "")
     setFormPrice(String(product.sell_price || product.price || 0))
     setFormCostPrice(String(product.cost_price || 0))
     setFormWeight(String(product.weight || 0))
@@ -167,6 +175,8 @@ export default function ProductsPage() {
     setNewSupplierName("")
     setNewCategoryName("")
     setNewBrandName("")
+    setFormInitialWarehouse("")
+    setFormInitialStock("")
     setDialogOpen(true)
   }
 
@@ -216,6 +226,7 @@ export default function ProductsPage() {
           category_id: categoryId || null,
           brand_id: brandId,
           material: materialValue,
+          barcode: formBarcode.trim() || null,
           sell_price: parseFloat(formPrice),
           cost_price: parseFloat(formCostPrice) || 0,
           weight: parseFloat(formWeight) || null,
@@ -234,7 +245,7 @@ export default function ProductsPage() {
           brand_id: brandId,
           material: materialValue,
           weight: parseFloat(formWeight) || null,
-          barcode: generateBarcode(),
+          barcode: formBarcode.trim() || null,
           sell_price: parseFloat(formPrice),
           cost_price: parseFloat(formCostPrice) || 0,
           min_stock: parseInt(formMinStock) || 5,
@@ -243,13 +254,10 @@ export default function ProductsPage() {
           factory_code: formFactoryCode || null,
           internal_code: formInternalCode || null,
         })
-        
-        // Auto-create stock record in "Shopping" warehouse if product was created successfully
-        if (newProduct && warehouses.length > 0) {
-          const shoppingWarehouse = warehouses.find(w => w.name === "Shopping") || warehouses[0]
-          if (shoppingWarehouse) {
-            await adjustStock(newProduct.id, shoppingWarehouse.id, 1, "in", "Stock inicial creado automáticamente")
-          }
+
+        // Stock inicial: solo si el usuario eligió depósito y cantidad
+        if (newProduct && formInitialWarehouse && formInitialStock && parseInt(formInitialStock) > 0) {
+          await adjustStock(newProduct.id, formInitialWarehouse, parseInt(formInitialStock), "in", "Stock inicial")
         }
       }
 
@@ -574,6 +582,15 @@ export default function ProductsPage() {
               </Select>
             </div>
 
+            <div className="grid gap-2">
+              <Label>Código de Barras</Label>
+              <Input
+                value={formBarcode}
+                onChange={(e) => setFormBarcode(e.target.value)}
+                placeholder="Escanear o ingresar manualmente"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Código de Fábrica</Label>
@@ -583,7 +600,7 @@ export default function ProductsPage() {
                   placeholder="Ej: MFG-12345"
                 />
               </div>
-              
+
               <div className="grid gap-2">
                 <Label>Código Interno</Label>
                 <Input
@@ -704,6 +721,37 @@ export default function ProductsPage() {
                 onCheckedChange={setFormActive}
               />
             </div>
+
+            {!editingProduct && (
+              <div className="grid gap-3 rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">Stock inicial (opcional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <Label>Depósito</Label>
+                    <Select value={formInitialWarehouse} onValueChange={setFormInitialWarehouse}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {warehouses.filter(w => w.is_active !== false).map(w => (
+                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Cantidad</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={formInitialStock}
+                      onChange={(e) => setFormInitialStock(e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           
           <DialogFooter>
