@@ -108,6 +108,13 @@ function ProductsPageInner() {
   // Confirmación al cerrar con datos sin guardar
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
 
+  // Categoría "efectiva": si el usuario está creando una categoría nueva,
+  // usamos el texto ingresado como categoría válida (aunque todavía no exista
+  // en la tabla categories — eso se resuelve en handleSave con addCategory).
+  const effectiveCategory = showNewCategoryInput && newCategoryName.trim()
+    ? newCategoryName.trim()
+    : formCategory
+
   const categoryNames = useMemo(() => {
     const catList = categories.length > 0 
       ? categories.filter(c => c.is_active).map(c => c.name)
@@ -213,7 +220,7 @@ function ProductsPageInner() {
   }
 
   const handleSave = async () => {
-    if (!formName || !formCategory || !formPrice) return
+    if (!formName || !effectiveCategory || !formPrice) return
     
     setSaving(true)
     try {
@@ -227,7 +234,7 @@ function ProductsPageInner() {
       }
       
       // Handle new category creation if needed
-      let categoryId = formCategory || null
+      let categoryId = effectiveCategory || null
       if (showNewCategoryInput && newCategoryName.trim()) {
         const newCategory = await addCategory({ name: newCategoryName.trim() })
         if (newCategory) {
@@ -254,7 +261,7 @@ function ProductsPageInner() {
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
           name: formName,
-          category: formCategory,
+          category: effectiveCategory,
           category_id: categoryId || null,
           brand_id: brandId,
           material: materialValue,
@@ -271,8 +278,8 @@ function ProductsPageInner() {
       } else {
         const newProduct = await addProduct({
           name: formName,
-          sku: generateSKU(formCategory),
-          category: formCategory,
+          sku: generateSKU(effectiveCategory),
+          category: effectiveCategory,
           category_id: categoryId || null,
           brand_id: brandId,
           material: materialValue,
@@ -293,7 +300,7 @@ function ProductsPageInner() {
         }
 
         // Recordar valores para el próximo producto
-        setStickyCategory(formCategory)
+        setStickyCategory(effectiveCategory)
         setStickyBrand(formBrand)
         setStickyMaterial(formMaterial)
         setStickySupplierId(formSupplierId)
@@ -479,7 +486,7 @@ function ProductsPageInner() {
 
       {/* Create/Edit Product Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
-        if (!open && (formName || formBarcode || formPrice)) {
+        if (!open && (formName || formBarcode || formPrice || newCategoryName.trim())) {
           setConfirmCloseOpen(true)
         } else {
           setDialogOpen(open)
@@ -807,7 +814,7 @@ function ProductsPageInner() {
             </Button>
             <Button 
               onClick={handleSave}
-              disabled={!formName || !formCategory || !formPrice || saving}
+              disabled={!formName || !effectiveCategory || !formPrice || saving}
             >
               {saving ? "Guardando..." : editingProduct ? "Guardar Cambios" : "Crear Producto"}
             </Button>
