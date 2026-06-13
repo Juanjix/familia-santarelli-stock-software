@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute } from "./types"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -67,6 +67,7 @@ interface InventoryContextType {
   suppliers: Supplier[]
   categories: Category[]
   brands: Brand[]
+  categoryAttributes: CategoryAttribute[]
   productStock: Map<string, StockByWarehouse[]>
   loading: boolean
   error: string | null
@@ -103,6 +104,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [brands, setBrands] = useState<Brand[]>([])
+  const [categoryAttributes, setCategoryAttributes] = useState<CategoryAttribute[]>([])
   const [productStock, setProductStock] = useState<Map<string, StockByWarehouse[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -115,7 +117,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     
     try {
       // Fetch all data in parallel
-      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes] = await Promise.all([
+      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes, categoryAttributesRes] = await Promise.all([
         supabase.from("products").select(`
           *,
           suppliers(id, name, contact, created_at)
@@ -140,6 +142,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         supabase.from("suppliers").select("*").order("name"),
         supabase.from("categories").select("*").order("name"),
         supabase.from("brands").select("*").order("name"),
+        supabase.from("category_attributes").select("*").order("sort_order"),
       ])
 
       if (productsRes.error) throw productsRes.error
@@ -150,6 +153,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       if (suppliersRes.error) throw suppliersRes.error
       if (categoriesRes.error) throw categoriesRes.error
       if (brandsRes.error) throw brandsRes.error
+      if (categoryAttributesRes.error) throw categoryAttributesRes.error
 
       setProducts((productsRes.data || []).map(normalizeProduct))
       setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
@@ -158,6 +162,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setSuppliers(suppliersRes.data || [])
       setCategories(categoriesRes.data || [])
       setBrands(brandsRes.data || [])
+      setCategoryAttributes(categoryAttributesRes.data || [])
       
       // Build product stock map
       const stockMap = new Map<string, StockByWarehouse[]>()
@@ -215,6 +220,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         brand_id: product.brand_id || null,
         factory_code: product.factory_code || null,
         internal_code: product.internal_code || null,
+        attributes: product.attributes || {},
       })
       .select(`*, suppliers(id, name, contact, created_at)`)
       .single()
@@ -250,6 +256,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         ...(updates.brand_id !== undefined && { brand_id: updates.brand_id }),
         ...(updates.factory_code !== undefined && { factory_code: updates.factory_code }),
         ...(updates.internal_code !== undefined && { internal_code: updates.internal_code }),
+        ...(updates.attributes !== undefined && { attributes: updates.attributes || {} }),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -561,6 +568,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       suppliers,
       categories,
       brands,
+      categoryAttributes,
       productStock,
       loading,
       error,

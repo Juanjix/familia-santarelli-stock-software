@@ -19,28 +19,37 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { 
-  Building2, 
-  Users, 
-  Bell, 
+import {
+  Building2,
+  Users,
+  Bell,
   Database,
   Plus,
   Pencil,
-  Warehouse
+  Warehouse,
+  Tags
 } from "lucide-react"
+import type { Category } from "@/lib/types"
 
 export default function SettingsPage() {
-  const { warehouses, addWarehouse, updateWarehouse } = useInventory()
-  
+  const { warehouses, addWarehouse, updateWarehouse, categories, addCategory, updateCategory } = useInventory()
+
   const [businessName, setBusinessName] = useState("Familia Santarelli")
   const [lowStockThreshold, setLowStockThreshold] = useState("5")
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
-  
+
   const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false)
   const [editingWarehouse, setEditingWarehouse] = useState<typeof warehouses[0] | null>(null)
   const [warehouseName, setWarehouseName] = useState("")
   const [warehouseDescription, setWarehouseDescription] = useState("")
   const [warehouseActive, setWarehouseActive] = useState(true)
+
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [categoryName, setCategoryName] = useState("")
+  const [categoryDescription, setCategoryDescription] = useState("")
+  const [categoryActive, setCategoryActive] = useState(true)
+  const [savingCategory, setSavingCategory] = useState(false)
 
   const handleSaveWarehouse = () => {
     if (!warehouseName) return
@@ -78,6 +87,47 @@ export default function SettingsPage() {
     setWarehouseDescription(warehouse.description)
     setWarehouseActive(warehouse.isActive)
     setWarehouseDialogOpen(true)
+  }
+
+  const handleSaveCategory = async () => {
+    if (!categoryName.trim()) return
+
+    setSavingCategory(true)
+    try {
+      if (editingCategory) {
+        await updateCategory(editingCategory.id, {
+          name: categoryName.trim(),
+          description: categoryDescription.trim() || null,
+          is_active: categoryActive,
+        })
+      } else {
+        await addCategory({
+          name: categoryName.trim(),
+          description: categoryDescription.trim() || null,
+          is_active: categoryActive,
+        })
+      }
+
+      resetCategoryForm()
+      setCategoryDialogOpen(false)
+    } finally {
+      setSavingCategory(false)
+    }
+  }
+
+  const resetCategoryForm = () => {
+    setCategoryName("")
+    setCategoryDescription("")
+    setCategoryActive(true)
+    setEditingCategory(null)
+  }
+
+  const openEditCategory = (category: Category) => {
+    setEditingCategory(category)
+    setCategoryName(category.name)
+    setCategoryDescription(category.description || "")
+    setCategoryActive(category.is_active)
+    setCategoryDialogOpen(true)
   }
 
   return (
@@ -264,6 +314,113 @@ export default function SettingsPage() {
                     </Button>
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Categories Management */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Tags className="h-5 w-5" />
+                  Categorías
+                </CardTitle>
+                <CardDescription>
+                  Administrar categorías de productos
+                </CardDescription>
+              </div>
+              <Dialog open={categoryDialogOpen} onOpenChange={(open) => {
+                setCategoryDialogOpen(open)
+                if (!open) resetCategoryForm()
+              }}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Agregar Categoría
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingCategory ? "Editar Categoría" : "Nueva Categoría"}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {editingCategory
+                        ? "Modifique los datos de la categoría"
+                        : "Agregue una nueva categoría de productos"
+                      }
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label>Nombre</Label>
+                      <Input
+                        value={categoryName}
+                        onChange={(e) => setCategoryName(e.target.value)}
+                        placeholder="Nombre de la categoría"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Descripción</Label>
+                      <Textarea
+                        value={categoryDescription}
+                        onChange={(e) => setCategoryDescription(e.target.value)}
+                        placeholder="Descripción opcional"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label>Activa</Label>
+                      <Switch
+                        checked={categoryActive}
+                        onCheckedChange={setCategoryActive}
+                      />
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => {
+                      setCategoryDialogOpen(false)
+                      resetCategoryForm()
+                    }}>
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleSaveCategory} disabled={!categoryName.trim() || savingCategory}>
+                      {savingCategory ? "Guardando..." : editingCategory ? "Guardar Cambios" : "Crear Categoría"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {categories.map(category => (
+                  <div
+                    key={category.id}
+                    className="flex items-center justify-between rounded-lg border border-border p-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`h-3 w-3 rounded-full ${category.is_active ? "bg-green-500" : "bg-muted"}`} />
+                      <div>
+                        <p className="font-medium">{category.name}</p>
+                        {category.description && (
+                          <p className="text-sm text-muted-foreground">{category.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openEditCategory(category)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {categories.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No hay categorías cargadas.</p>
+                )}
               </div>
             </CardContent>
           </Card>

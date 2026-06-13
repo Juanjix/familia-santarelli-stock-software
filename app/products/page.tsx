@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useInventory } from "@/lib/inventory-context"
+import { cn } from "@/lib/utils"
 import { Header } from "@/components/dashboard/header"
 import { ProductsTable } from "@/components/products/products-table"
 import { ProductsFilters } from "@/components/products/products-filters"
@@ -55,7 +56,7 @@ function generateBarcode(): string {
 }
 
 function ProductsPageInner() {
-  const { products, suppliers, categories, brands, warehouses, addProduct, updateProduct, deleteProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
+  const { products, suppliers, categories, brands, categoryAttributes, warehouses, addProduct, updateProduct, deleteProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
   const searchParams = useSearchParams()
   const [search, setSearch] = useState(() => searchParams.get("q") || "")
   const [category, setCategory] = useState("Todos")
@@ -107,6 +108,8 @@ function ProductsPageInner() {
   const [stickyInitialWarehouse, setStickyInitialWarehouse] = useState("")
   // Confirmación al cerrar con datos sin guardar
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
+  // Atributos dinámicos por categoría (ej. { talle: "16", hilo: "0.8mm", largo: "45cm" })
+  const [formAttributes, setFormAttributes] = useState<Record<string, string>>({})
 
   // Categoría "efectiva": si el usuario está creando una categoría nueva,
   // usamos el texto ingresado como categoría válida (aunque todavía no exista
@@ -114,6 +117,18 @@ function ProductsPageInner() {
   const effectiveCategory = showNewCategoryInput && newCategoryName.trim()
     ? newCategoryName.trim()
     : formCategory
+
+  // Atributos específicos de la categoría seleccionada (ej. Talle, Hilo, Largo).
+  // Si la categoría es nueva (todavía no existe en la tabla categories), no hay
+  // atributos definidos para ella y no se muestra nada extra.
+  const activeCategoryAttributes = useMemo(() => {
+    if (showNewCategoryInput && newCategoryName.trim()) return []
+    const cat = categories.find(c => c.name === formCategory)
+    if (!cat) return []
+    return categoryAttributes
+      .filter(a => a.category_id === cat.id && a.is_active)
+      .sort((a, b) => a.sort_order - b.sort_order)
+  }, [categories, categoryAttributes, formCategory, showNewCategoryInput, newCategoryName])
 
   const categoryNames = useMemo(() => {
     const catList = categories.length > 0 
@@ -180,6 +195,7 @@ function ProductsPageInner() {
     setShowNewBrandInput(false)
     setFormInitialWarehouse("")
     setFormInitialStock("")
+    setFormAttributes({})
     setEditingProduct(null)
   }
 
@@ -216,6 +232,7 @@ function ProductsPageInner() {
     setNewBrandName("")
     setFormInitialWarehouse("")
     setFormInitialStock("")
+    setFormAttributes(product.attributes || {})
     setDialogOpen(true)
   }
 
@@ -257,7 +274,16 @@ function ProductsPageInner() {
 
       // Handle material - convert "none" to null
       const materialValue = formMaterial && formMaterial !== "none" ? formMaterial : null
-      
+
+      // Solo se guardan los atributos vigentes para la categoría seleccionada,
+      // con valores no vacíos (evita basura si el usuario cambió de categoría
+      // después de tipear algo).
+      const attributesToSave = activeCategoryAttributes.reduce((acc, attr) => {
+        const value = (formAttributes[attr.key] || "").trim()
+        if (value) acc[attr.key] = value
+        return acc
+      }, {} as Record<string, string>)
+
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
           name: formName,
@@ -274,6 +300,7 @@ function ProductsPageInner() {
           supplier_id: supplierId,
           factory_code: formFactoryCode || null,
           internal_code: formInternalCode || null,
+          attributes: attributesToSave,
         })
       } else {
         const newProduct = await addProduct({
@@ -286,6 +313,7 @@ function ProductsPageInner() {
           weight: parseFloat(formWeight) || null,
           barcode: formBarcode.trim() || null,
           sell_price: parseFloat(formPrice),
+          attributes: attributesToSave,
           cost_price: parseFloat(formCostPrice) || 0,
           min_stock: parseInt(formMinStock) || 5,
           is_active: formActive,
@@ -620,7 +648,26 @@ function ProductsPageInner() {
                 )}
               </div>
             </div>
-            
+
+            {/* Atributos específicos de la categoría (ej. Talle, Hilo, Largo) */}
+            {activeCategoryAttributes.length > 0 && (
+              <div className={cn(
+                "grid gap-4",
+                activeCategoryAttributes.length > 1 ? "grid-cols-2" : "grid-cols-1"
+              )}>
+                {activeCategoryAttributes.map(attr => (
+                  <div key={attr.key} className="grid gap-2">
+                    <Label>{attr.label}</Label>
+                    <Input
+                      value={formAttributes[attr.key] || ""}
+                      onChange={(e) => setFormAttributes(prev => ({ ...prev, [attr.key]: e.target.value }))}
+                      placeholder={attr.label}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="grid gap-2">
               <Label>Material</Label>
               <Select value={formMaterial} onValueChange={setFormMaterial}>

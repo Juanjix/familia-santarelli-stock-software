@@ -109,7 +109,7 @@ const pricingTypes = ["Fijo", "Base oro", "Base plata", "Base USD", "Por peso", 
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { getProductById, getStockByWarehouse, movements, warehouses, updateProduct, adjustStock, transferStock } = useInventory()
+  const { getProductById, getStockByWarehouse, movements, warehouses, updateProduct, adjustStock, transferStock, categoryAttributes } = useInventory()
   
   const product = getProductById(id)
   
@@ -266,6 +266,23 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                         <p className="font-medium">{product.weight} g</p>
                       </div>
                     </div>
+                    {product.attributes && Object.keys(product.attributes).length > 0 && (
+                      Object.entries(product.attributes).map(([key, value]) => {
+                        if (!value) return null
+                        const def = categoryAttributes.find(a => a.category_id === product.category_id && a.key === key)
+                        return (
+                          <div key={key} className="flex items-start gap-3">
+                            <div className="rounded-lg bg-secondary p-2">
+                              <Tag className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground">{def?.label || key}</p>
+                              <p className="font-medium">{value}</p>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
                     {product.supplierName && (
                       <div className="flex items-start gap-3">
                         <div className="rounded-lg bg-secondary p-2">

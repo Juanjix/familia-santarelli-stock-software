@@ -23,6 +23,18 @@ export interface Brand {
   updated_at: string
 }
 
+// Define qué atributos adicionales requiere cada categoría (ej. Talle, Hilo, Largo)
+export interface CategoryAttribute {
+  id: string
+  category_id: string
+  key: string
+  label: string
+  input_type: string
+  sort_order: number
+  is_active: boolean
+  created_at: string
+}
+
 export interface Product {
   id: string
   sku: string
@@ -42,6 +54,7 @@ export interface Product {
   factory_code?: string | null
   internal_code?: string | null
   brand_id?: string | null
+  attributes?: Record<string, string> | null
   created_at: string
   updated_at: string
   // Joined fields
