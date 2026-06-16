@@ -69,7 +69,7 @@ export default function SettingsPage() {
     warehouses, addWarehouse, updateWarehouse,
     categories, addCategory, updateCategory, deleteCategory,
     categoryAttributes, addCategoryAttribute, updateCategoryAttribute, deleteCategoryAttribute,
-    brands, addBrand, updateBrand,
+    brands, addBrand, updateBrand, deleteBrand,
     products,
   } = useInventory()
 
@@ -287,6 +287,14 @@ export default function SettingsPage() {
 
   const resetBrandForm = () => {
     setBrandDialogName(""); setBrandDialogDescription(""); setBrandDialogActive(true); setEditingBrand(null)
+  }
+
+  const [deletingBrand, setDeletingBrand] = useState<Brand | null>(null)
+
+  const handleDeleteBrand = async () => {
+    if (!deletingBrand) return
+    await deleteBrand(deletingBrand.id)
+    setDeletingBrand(null)
   }
 
   const openEditBrand = (brand: Brand) => {
@@ -815,9 +823,23 @@ export default function SettingsPage() {
                           </p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => openEditBrand(brand)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditBrand(brand)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          disabled={productCount > 0}
+                          title={productCount > 0
+                            ? `No se puede eliminar: ${productCount} producto${productCount !== 1 ? "s" : ""} la usan. Desactivala en cambio.`
+                            : "Eliminar marca"}
+                          onClick={() => setDeletingBrand(brand)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   )
                 })}
@@ -842,6 +864,27 @@ export default function SettingsPage() {
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={handleDeleteCategory}
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Confirmar eliminar marca */}
+          <AlertDialog open={!!deletingBrand} onOpenChange={(open) => !open && setDeletingBrand(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar marca?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vas a eliminar <strong>{deletingBrand?.name}</strong>. Esta acción no se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleDeleteBrand}
                 >
                   Eliminar
                 </AlertDialogAction>
