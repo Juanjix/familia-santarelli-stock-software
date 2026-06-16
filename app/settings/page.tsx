@@ -47,12 +47,13 @@ import {
   Trash2,
   Warehouse,
   Tags,
+  Tag,
   ChevronUp,
   ChevronDown,
   Hash,
   Type,
 } from "lucide-react"
-import type { Category, CategoryAttribute } from "@/lib/types"
+import type { Brand, Category, CategoryAttribute } from "@/lib/types"
 
 function slugify(text: string): string {
   return text
@@ -68,6 +69,7 @@ export default function SettingsPage() {
     warehouses, addWarehouse, updateWarehouse,
     categories, addCategory, updateCategory, deleteCategory,
     categoryAttributes, addCategoryAttribute, updateCategoryAttribute, deleteCategoryAttribute,
+    brands, addBrand, updateBrand,
     products,
   } = useInventory()
 
@@ -249,6 +251,50 @@ export default function SettingsPage() {
     if (!deletingAttr) return
     await deleteCategoryAttribute(deletingAttr.id)
     setDeletingAttr(null)
+  }
+
+  // ── Marcas ─────────────────────────────────────────────────────────────────
+  const [brandDialogOpen, setBrandDialogOpen] = useState(false)
+  const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
+  const [brandDialogName, setBrandDialogName] = useState("")
+  const [brandDialogDescription, setBrandDialogDescription] = useState("")
+  const [brandDialogActive, setBrandDialogActive] = useState(true)
+  const [savingBrand, setSavingBrand] = useState(false)
+
+  const handleSaveBrand = async () => {
+    if (!brandDialogName.trim()) return
+    setSavingBrand(true)
+    try {
+      if (editingBrand) {
+        await updateBrand(editingBrand.id, {
+          name: brandDialogName.trim(),
+          description: brandDialogDescription.trim() || null,
+          is_active: brandDialogActive,
+        })
+      } else {
+        await addBrand({
+          name: brandDialogName.trim(),
+          description: brandDialogDescription.trim() || null,
+          is_active: true,
+        })
+      }
+      resetBrandForm()
+      setBrandDialogOpen(false)
+    } finally {
+      setSavingBrand(false)
+    }
+  }
+
+  const resetBrandForm = () => {
+    setBrandDialogName(""); setBrandDialogDescription(""); setBrandDialogActive(true); setEditingBrand(null)
+  }
+
+  const openEditBrand = (brand: Brand) => {
+    setEditingBrand(brand)
+    setBrandDialogName(brand.name)
+    setBrandDialogDescription(brand.description || "")
+    setBrandDialogActive(brand.is_active)
+    setBrandDialogOpen(true)
   }
 
   const moveAttr = async (attr: CategoryAttribute, direction: "up" | "down") => {
@@ -691,6 +737,92 @@ export default function SettingsPage() {
                 })}
                 {categories.length === 0 && (
                   <p className="text-sm text-muted-foreground">No hay categorías cargadas.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Marcas */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Tag className="h-5 w-5" />
+                  Marcas
+                </CardTitle>
+                <CardDescription>Administrar marcas de productos</CardDescription>
+              </div>
+              <Dialog open={brandDialogOpen} onOpenChange={(open) => { setBrandDialogOpen(open); if (!open) resetBrandForm() }}>
+                <DialogTrigger asChild>
+                  <Button><Plus className="mr-2 h-4 w-4" />Agregar Marca</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{editingBrand ? "Editar Marca" : "Nueva Marca"}</DialogTitle>
+                    <DialogDescription>
+                      {editingBrand ? "Modificá los datos de la marca" : "Completá los datos para crear una nueva marca"}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label>Nombre</Label>
+                      <Input
+                        value={brandDialogName}
+                        onChange={(e) => setBrandDialogName(e.target.value)}
+                        placeholder="Nombre de la marca"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Descripción</Label>
+                      <Textarea
+                        value={brandDialogDescription}
+                        onChange={(e) => setBrandDialogDescription(e.target.value)}
+                        placeholder="Descripción opcional"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label>Activa</Label>
+                      <Switch checked={brandDialogActive} onCheckedChange={setBrandDialogActive} />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => { setBrandDialogOpen(false); resetBrandForm() }}>Cancelar</Button>
+                    <Button onClick={handleSaveBrand} disabled={!brandDialogName.trim() || savingBrand}>
+                      {savingBrand ? "Guardando..." : editingBrand ? "Guardar Cambios" : "Crear Marca"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {brands.map(brand => {
+                  const productCount = products.filter(p => p.brand_id === brand.id).length
+                  return (
+                    <div
+                      key={brand.id}
+                      className="flex items-center justify-between rounded-lg border border-border p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`h-3 w-3 shrink-0 rounded-full ${brand.is_active ? "bg-green-500" : "bg-muted"}`} />
+                        <div>
+                          <p className="font-medium">{brand.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {productCount === 0 ? "Sin productos" : `${productCount} producto${productCount !== 1 ? "s" : ""}`}
+                            {!brand.is_active && " · Inactiva"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => openEditBrand(brand)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )
+                })}
+                {brands.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No hay marcas cargadas.</p>
                 )}
               </div>
             </CardContent>

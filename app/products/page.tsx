@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import {
   Dialog,
   DialogContent,
@@ -573,20 +574,23 @@ function ProductsPageInner() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-1">
-            <div className="grid gap-2">
-              <Label>Nombre</Label>
-              <Input
-                autoFocus
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="Nombre del producto"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-5 py-4 overflow-y-auto flex-1 pr-1">
+            {/* ── Información básica ── */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Información básica</p>
               <div className="grid gap-2">
-                <Label>Categoría</Label>
+                <Label>Nombre <span className="text-destructive">*</span></Label>
+                <Input
+                  autoFocus
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="Nombre del producto"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Categoría <span className="text-destructive">*</span></Label>
                 {!showNewCategoryInput ? (
                   <div className="flex gap-2">
                     <Select value={formCategory} onValueChange={setFormCategory}>
@@ -652,7 +656,7 @@ function ProductsPageInner() {
               </div>
               
               <div className="grid gap-2">
-                <Label>Marca</Label>
+                <Label>Marca <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
                 {!showNewBrandInput ? (
                   <div className="flex gap-2">
                     <Select value={formBrand} onValueChange={setFormBrand}>
@@ -712,222 +716,241 @@ function ProductsPageInner() {
                   </div>
                 )}
               </div>
+              </div>
             </div>
 
-            {/* Atributos específicos de la categoría (ej. Talle, Hilo, Largo) */}
-            {activeCategoryAttributes.length > 0 && (
-              <div className={cn(
-                "grid gap-4",
-                activeCategoryAttributes.length > 1 ? "grid-cols-2" : "grid-cols-1"
-              )}>
-                {activeCategoryAttributes.map(attr => (
-                  <div key={attr.key} className="grid gap-2">
-                    <Label>{attr.label}</Label>
-                    <Input
-                      type={attr.input_type === "number" ? "number" : "text"}
-                      value={formAttributes[attr.key] || ""}
-                      onChange={(e) => setFormAttributes(prev => ({ ...prev, [attr.key]: e.target.value }))}
-                      placeholder={attr.placeholder || attr.label}
-                    />
+            {/* ── Atributos ── */}
+            {(activeCategoryAttributes.length > 0 || (showNewCategoryInput && newCategoryName.trim())) && (
+              <div className="space-y-3">
+                <Separator />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Atributos</p>
+                {activeCategoryAttributes.length > 0 && (
+                  <div className={cn(
+                    "grid gap-4",
+                    activeCategoryAttributes.length > 1 ? "grid-cols-2" : "grid-cols-1"
+                  )}>
+                    {activeCategoryAttributes.map(attr => (
+                      <div key={attr.key} className="grid gap-2">
+                        <Label>{attr.label} <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                        <Input
+                          type={attr.input_type === "number" ? "number" : "text"}
+                          value={formAttributes[attr.key] || ""}
+                          onChange={(e) => setFormAttributes(prev => ({ ...prev, [attr.key]: e.target.value }))}
+                          placeholder={attr.placeholder || attr.label}
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                {showNewCategoryInput && newCategoryName.trim() && (
+                  <p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
+                    Los atributos específicos de <strong>{newCategoryName.trim()}</strong> (Talle, Hilo, etc.) se configuran
+                    desde <strong>Configuración → Categorías</strong> una vez creada.
+                  </p>
+                )}
               </div>
             )}
 
-            {/* Hint cuando se crea una categoría nueva al vuelo: sus atributos
-                se configuran después desde Configuración → Categorías */}
-            {showNewCategoryInput && newCategoryName.trim() && (
-              <p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
-                Los atributos específicos de <strong>{newCategoryName.trim()}</strong> (Talle, Hilo, etc.) se configuran
-                desde <strong>Configuración → Categorías</strong> una vez creada.
-              </p>
-            )}
+            {/* ── Identificación ── */}
+            <div className="space-y-3">
+              <Separator />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Identificación</p>
+              <div className="grid gap-2">
+                <Label>Código de Barras <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                <Input
+                  value={formBarcode}
+                  onChange={(e) => setFormBarcode(e.target.value)}
+                  placeholder="Escanear o ingresar manualmente"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Código de Fábrica <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                  <Input
+                    value={formFactoryCode}
+                    onChange={(e) => setFormFactoryCode(e.target.value)}
+                    placeholder="Ej: MFG-12345"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Código Interno <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                  <Input
+                    value={formInternalCode}
+                    onChange={(e) => setFormInternalCode(e.target.value)}
+                    placeholder="Ej: INT-001"
+                  />
+                </div>
+              </div>
+            </div>
 
-            <div className="grid gap-2">
-              <Label>Material</Label>
-              <Select value={formMaterial} onValueChange={setFormMaterial}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin especificar</SelectItem>
-                  {materials.map(mat => (
-                    <SelectItem key={mat} value={mat}>{mat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Código de Barras</Label>
-              <Input
-                value={formBarcode}
-                onChange={(e) => setFormBarcode(e.target.value)}
-                placeholder="Escanear o ingresar manualmente"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Código de Fábrica</Label>
-                <Input
-                  value={formFactoryCode}
-                  onChange={(e) => setFormFactoryCode(e.target.value)}
-                  placeholder="Ej: MFG-12345"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Código Interno</Label>
-                <Input
-                  value={formInternalCode}
-                  onChange={(e) => setFormInternalCode(e.target.value)}
-                  placeholder="Ej: INT-001"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Precio Venta (ARS)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formPrice}
-                  onChange={(e) => setFormPrice(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              
-              <div className="grid gap-2">
-                <Label>Precio Costo (ARS)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formCostPrice}
-                  onChange={(e) => setFormCostPrice(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Peso (gr)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formWeight}
-                  onChange={(e) => setFormWeight(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              
-              <div className="grid gap-2">
-                <Label>Stock Mínimo</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formMinStock}
-                  onChange={(e) => setFormMinStock(e.target.value)}
-                  placeholder="5"
-                />
-              </div>
-            </div>
-            
-            <div className="grid gap-2">
-              <Label>Proveedor</Label>
-              {!showNewSupplierInput ? (
-                <div className="flex gap-2">
-                  <Select value={formSupplierId || "none"} onValueChange={(val) => setFormSupplierId(val === "none" ? "" : val)}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Seleccionar proveedor" />
+            {/* ── Material ── */}
+            <div className="space-y-3">
+              <Separator />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Material</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Material <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                  <Select value={formMaterial} onValueChange={setFormMaterial}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Sin proveedor</SelectItem>
-                      {suppliers.map(supplier => (
-                        <SelectItem key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </SelectItem>
+                      <SelectItem value="none">Sin especificar</SelectItem>
+                      {materials.map(mat => (
+                        <SelectItem key={mat} value={mat}>{mat}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowNewSupplierInput(true)}
-                  >
-                    Nuevo
-                  </Button>
                 </div>
-              ) : (
-                <div className="flex gap-2">
+                <div className="grid gap-2">
+                  <Label>Peso (gr) <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
                   <Input
-                    value={newSupplierName}
-                    onChange={(e) => setNewSupplierName(e.target.value)}
-                    placeholder="Nombre del proveedor"
-                    className="flex-1"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formWeight}
+                    onChange={(e) => setFormWeight(e.target.value)}
+                    placeholder="0"
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowNewSupplierInput(false)
-                      setNewSupplierName("")
-                    }}
-                  >
-                    Cancelar
-                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Precios ── */}
+            <div className="space-y-3">
+              <Separator />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precios</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Precio Venta (ARS) <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={formPrice}
+                    onChange={(e) => setFormPrice(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Precio Costo (ARS) <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={formCostPrice}
+                    onChange={(e) => setFormCostPrice(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Stock ── */}
+            <div className="space-y-3">
+              <Separator />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Stock</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Stock Mínimo <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={formMinStock}
+                    onChange={(e) => setFormMinStock(e.target.value)}
+                    placeholder="5"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Proveedor <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                  {!showNewSupplierInput ? (
+                    <div className="flex gap-2">
+                      <Select value={formSupplierId || "none"} onValueChange={(val) => setFormSupplierId(val === "none" ? "" : val)}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Seleccionar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sin proveedor</SelectItem>
+                          {suppliers.map(supplier => (
+                            <SelectItem key={supplier.id} value={supplier.id}>
+                              {supplier.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowNewSupplierInput(true)}
+                      >
+                        Nuevo
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Input
+                        value={newSupplierName}
+                        onChange={(e) => setNewSupplierName(e.target.value)}
+                        placeholder="Nombre del proveedor"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowNewSupplierInput(false)
+                          setNewSupplierName("")
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Producto Activo</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Los productos inactivos no aparecen en búsquedas
+                  </p>
+                </div>
+                <Switch
+                  checked={formActive}
+                  onCheckedChange={setFormActive}
+                />
+              </div>
+              {!editingProduct && (
+                <div className="grid gap-3 rounded-lg border border-border p-3">
+                  <p className="text-sm font-medium">Stock inicial (opcional)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="grid gap-2">
+                      <Label>Depósito</Label>
+                      <Select value={formInitialWarehouse} onValueChange={setFormInitialWarehouse}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {warehouses.filter(w => w.is_active !== false).map(w => (
+                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Cantidad</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formInitialStock}
+                        onChange={(e) => setFormInitialStock(e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Producto Activo</Label>
-                <p className="text-xs text-muted-foreground">
-                  Los productos inactivos no aparecen en búsquedas
-                </p>
-              </div>
-              <Switch
-                checked={formActive}
-                onCheckedChange={setFormActive}
-              />
-            </div>
-
-            {!editingProduct && (
-              <div className="grid gap-3 rounded-lg border border-border p-3">
-                <p className="text-sm font-medium">Stock inicial (opcional)</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-2">
-                    <Label>Depósito</Label>
-                    <Select value={formInitialWarehouse} onValueChange={setFormInitialWarehouse}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {warehouses.filter(w => w.is_active !== false).map(w => (
-                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Cantidad</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={formInitialStock}
-                      onChange={(e) => setFormInitialStock(e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
           
           <DialogFooter className="shrink-0 pt-2">
