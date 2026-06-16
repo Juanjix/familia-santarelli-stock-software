@@ -110,6 +110,11 @@ function ProductsPageInner() {
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
   // Atributos dinámicos por categoría (ej. { talle: "16", hilo: "0.8mm", largo: "45cm" })
   const [formAttributes, setFormAttributes] = useState<Record<string, string>>({})
+  // Creación inline de categoría/marca — estado de loading + error
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [categoryCreateError, setCategoryCreateError] = useState<string | null>(null)
+  const [creatingBrand, setCreatingBrand] = useState(false)
+  const [brandCreateError, setBrandCreateError] = useState<string | null>(null)
 
   // Categoría "efectiva": si el usuario está creando una categoría nueva,
   // usamos el texto ingresado como categoría válida (aunque todavía no exista
@@ -196,7 +201,41 @@ function ProductsPageInner() {
     setFormInitialWarehouse("")
     setFormInitialStock("")
     setFormAttributes({})
+    setCategoryCreateError(null)
+    setBrandCreateError(null)
     setEditingProduct(null)
+  }
+
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim()
+    if (!name || creatingCategory) return
+    setCreatingCategory(true)
+    setCategoryCreateError(null)
+    const result = await addCategory({ name, is_active: true })
+    if (result) {
+      setFormCategory(result.name)
+      setShowNewCategoryInput(false)
+      setNewCategoryName("")
+    } else {
+      setCategoryCreateError("No se pudo crear. ¿Ya existe una categoría con ese nombre?")
+    }
+    setCreatingCategory(false)
+  }
+
+  const handleCreateBrand = async () => {
+    const name = newBrandName.trim()
+    if (!name || creatingBrand) return
+    setCreatingBrand(true)
+    setBrandCreateError(null)
+    const result = await addBrand({ name, is_active: true })
+    if (result) {
+      setFormBrand(result.id)
+      setShowNewBrandInput(false)
+      setNewBrandName("")
+    } else {
+      setBrandCreateError("No se pudo crear. ¿Ya existe una marca con ese nombre?")
+    }
+    setCreatingBrand(false)
   }
 
   const openCreateDialog = () => {
@@ -576,25 +615,38 @@ function ProductsPageInner() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex gap-2">
-                    <Input
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="Nombre de categoría"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setShowNewCategoryInput(false)
-                        setNewCategoryName("")
-                      }}
-                      className="px-2"
-                    >
-                      Cancelar
-                    </Button>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex gap-1.5">
+                      <Input
+                        autoFocus
+                        value={newCategoryName}
+                        onChange={(e) => { setNewCategoryName(e.target.value); setCategoryCreateError(null) }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateCategory() } }}
+                        placeholder="Nueva categoría"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setShowNewCategoryInput(false); setNewCategoryName(""); setCategoryCreateError(null) }}
+                        className="px-2"
+                      >
+                        ✕
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleCreateCategory}
+                        disabled={!newCategoryName.trim() || creatingCategory}
+                        className="px-3"
+                      >
+                        {creatingCategory ? "..." : "Crear"}
+                      </Button>
+                    </div>
+                    {categoryCreateError && (
+                      <p className="text-xs text-destructive">{categoryCreateError}</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -625,25 +677,38 @@ function ProductsPageInner() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex gap-2">
-                    <Input
-                      value={newBrandName}
-                      onChange={(e) => setNewBrandName(e.target.value)}
-                      placeholder="Nombre de marca"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setShowNewBrandInput(false)
-                        setNewBrandName("")
-                      }}
-                      className="px-2"
-                    >
-                      Cancelar
-                    </Button>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex gap-1.5">
+                      <Input
+                        autoFocus
+                        value={newBrandName}
+                        onChange={(e) => { setNewBrandName(e.target.value); setBrandCreateError(null) }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateBrand() } }}
+                        placeholder="Nueva marca"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setShowNewBrandInput(false); setNewBrandName(""); setBrandCreateError(null) }}
+                        className="px-2"
+                      >
+                        ✕
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleCreateBrand}
+                        disabled={!newBrandName.trim() || creatingBrand}
+                        className="px-3"
+                      >
+                        {creatingBrand ? "..." : "Crear"}
+                      </Button>
+                    </div>
+                    {brandCreateError && (
+                      <p className="text-xs text-destructive">{brandCreateError}</p>
+                    )}
                   </div>
                 )}
               </div>
