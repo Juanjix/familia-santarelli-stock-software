@@ -20,19 +20,30 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Building2,
   Users,
   Bell,
   Database,
   Plus,
   Pencil,
+  Trash2,
   Warehouse,
   Tags
 } from "lucide-react"
 import type { Category } from "@/lib/types"
 
 export default function SettingsPage() {
-  const { warehouses, addWarehouse, updateWarehouse, categories, addCategory, updateCategory } = useInventory()
+  const { warehouses, addWarehouse, updateWarehouse, categories, addCategory, updateCategory, deleteCategory, products } = useInventory()
 
   const [businessName, setBusinessName] = useState("Familia Santarelli")
   const [lowStockThreshold, setLowStockThreshold] = useState("5")
@@ -50,6 +61,7 @@ export default function SettingsPage() {
   const [categoryDescription, setCategoryDescription] = useState("")
   const [categoryActive, setCategoryActive] = useState(true)
   const [savingCategory, setSavingCategory] = useState(false)
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
 
   const handleSaveWarehouse = () => {
     if (!warehouseName) return
@@ -120,6 +132,12 @@ export default function SettingsPage() {
     setCategoryDescription("")
     setCategoryActive(true)
     setEditingCategory(null)
+  }
+
+  const handleDeleteCategory = async () => {
+    if (!deletingCategory) return
+    await deleteCategory(deletingCategory.id)
+    setDeletingCategory(null)
   }
 
   const openEditCategory = (category: Category) => {
@@ -395,35 +413,78 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {categories.map(category => (
-                  <div
-                    key={category.id}
-                    className="flex items-center justify-between rounded-lg border border-border p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`h-3 w-3 rounded-full ${category.is_active ? "bg-green-500" : "bg-muted"}`} />
-                      <div>
-                        <p className="font-medium">{category.name}</p>
-                        {category.description && (
-                          <p className="text-sm text-muted-foreground">{category.description}</p>
-                        )}
+                {categories.map(category => {
+                  const productCount = products.filter(
+                    p => p.category_id === category.id || p.category === category.name
+                  ).length
+                  return (
+                    <div
+                      key={category.id}
+                      className="flex items-center justify-between rounded-lg border border-border p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`h-3 w-3 rounded-full ${category.is_active ? "bg-green-500" : "bg-muted"}`} />
+                        <div>
+                          <p className="font-medium">{category.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {category.description
+                              ? `${category.description} · `
+                              : ""}
+                            {productCount === 0
+                              ? "Sin productos"
+                              : `${productCount} producto${productCount !== 1 ? "s" : ""}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditCategory(category)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          disabled={productCount > 0}
+                          title={productCount > 0 ? `No se puede eliminar: ${productCount} producto${productCount !== 1 ? "s" : ""} la usan. Desactivala en cambio.` : "Eliminar categoría"}
+                          onClick={() => setDeletingCategory(category)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditCategory(category)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                  )
+                })}
                 {categories.length === 0 && (
                   <p className="text-sm text-muted-foreground">No hay categorías cargadas.</p>
                 )}
               </div>
             </CardContent>
           </Card>
+
+          {/* Delete category confirmation */}
+          <AlertDialog open={!!deletingCategory} onOpenChange={(open) => !open && setDeletingCategory(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vas a eliminar la categoría <strong>{deletingCategory?.name}</strong>. Esta acción no se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleDeleteCategory}
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Users placeholder */}
           <Card>
