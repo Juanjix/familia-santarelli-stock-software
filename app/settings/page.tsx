@@ -124,6 +124,7 @@ export default function SettingsPage() {
   const [attrPlaceholder, setAttrPlaceholder] = useState("")
   const [savingAttr, setSavingAttr] = useState(false)
   const [deletingAttr, setDeletingAttr] = useState<CategoryAttribute | null>(null)
+  const [attrError, setAttrError] = useState<string | null>(null)
 
   const currentCategoryAttrs = useMemo(() => {
     if (!editingCategory) return []
@@ -180,7 +181,7 @@ export default function SettingsPage() {
   const resetAttrForm = () => {
     setAttrFormOpen(false); setEditingAttr(null)
     setAttrLabel(""); setAttrKey(""); setAttrKeyManuallyEdited(false)
-    setAttrType("text"); setAttrPlaceholder("")
+    setAttrType("text"); setAttrPlaceholder(""); setAttrError(null)
   }
 
   const openNewAttr = () => {
@@ -210,6 +211,7 @@ export default function SettingsPage() {
   const handleSaveAttr = async () => {
     if (!attrLabel.trim() || !attrKey.trim() || !editingCategory) return
     setSavingAttr(true)
+    setAttrError(null)
     try {
       if (editingAttr) {
         await updateCategoryAttribute(editingAttr.id, {
@@ -218,11 +220,12 @@ export default function SettingsPage() {
           input_type: attrType,
           placeholder: attrPlaceholder.trim() || null,
         })
+        resetAttrForm()
       } else {
         const maxOrder = currentCategoryAttrs.length > 0
           ? Math.max(...currentCategoryAttrs.map(a => a.sort_order))
           : 0
-        await addCategoryAttribute({
+        const result = await addCategoryAttribute({
           category_id: editingCategory.id,
           label: attrLabel.trim(),
           key: attrKey.trim(),
@@ -231,8 +234,12 @@ export default function SettingsPage() {
           sort_order: maxOrder + 1,
           is_active: true,
         })
+        if (result) {
+          resetAttrForm()
+        } else {
+          setAttrError("No se pudo guardar el atributo. Verificá que la key no esté repetida en esta categoría.")
+        }
       }
-      resetAttrForm()
     } finally {
       setSavingAttr(false)
     }
@@ -596,6 +603,11 @@ export default function SettingsPage() {
                                 </div>
                               </div>
 
+                              {attrError && (
+                                <p className="text-xs text-destructive rounded-md bg-destructive/10 px-2 py-1.5">
+                                  {attrError}
+                                </p>
+                              )}
                               <div className="flex gap-2 justify-end pt-1">
                                 <Button type="button" variant="outline" size="sm" onClick={resetAttrForm}>
                                   Cancelar
