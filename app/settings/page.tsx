@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -30,6 +31,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Building2,
   Users,
   Bell,
@@ -38,59 +46,55 @@ import {
   Pencil,
   Trash2,
   Warehouse,
-  Tags
+  Tags,
+  ChevronUp,
+  ChevronDown,
+  Hash,
+  Type,
 } from "lucide-react"
-import type { Category } from "@/lib/types"
+import type { Category, CategoryAttribute } from "@/lib/types"
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+}
 
 export default function SettingsPage() {
-  const { warehouses, addWarehouse, updateWarehouse, categories, addCategory, updateCategory, deleteCategory, products } = useInventory()
+  const {
+    warehouses, addWarehouse, updateWarehouse,
+    categories, addCategory, updateCategory, deleteCategory,
+    categoryAttributes, addCategoryAttribute, updateCategoryAttribute, deleteCategoryAttribute,
+    products,
+  } = useInventory()
 
   const [businessName, setBusinessName] = useState("Familia Santarelli")
   const [lowStockThreshold, setLowStockThreshold] = useState("5")
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
 
+  // ── Depósitos ──────────────────────────────────────────────────────────────
   const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false)
   const [editingWarehouse, setEditingWarehouse] = useState<typeof warehouses[0] | null>(null)
   const [warehouseName, setWarehouseName] = useState("")
   const [warehouseDescription, setWarehouseDescription] = useState("")
   const [warehouseActive, setWarehouseActive] = useState(true)
 
-  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
-  const [categoryName, setCategoryName] = useState("")
-  const [categoryDescription, setCategoryDescription] = useState("")
-  const [categoryActive, setCategoryActive] = useState(true)
-  const [savingCategory, setSavingCategory] = useState(false)
-  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
-
   const handleSaveWarehouse = () => {
     if (!warehouseName) return
-
     if (editingWarehouse) {
-      updateWarehouse(editingWarehouse.id, {
-        name: warehouseName,
-        description: warehouseDescription,
-        isActive: warehouseActive,
-      })
+      updateWarehouse(editingWarehouse.id, { name: warehouseName, description: warehouseDescription, isActive: warehouseActive })
     } else {
-      addWarehouse({
-        name: warehouseName,
-        description: warehouseDescription,
-        isActive: warehouseActive,
-        stockCount: 0,
-        totalValue: 0,
-      })
+      addWarehouse({ name: warehouseName, description: warehouseDescription, isActive: warehouseActive, stockCount: 0, totalValue: 0 })
     }
-
     resetWarehouseForm()
     setWarehouseDialogOpen(false)
   }
 
   const resetWarehouseForm = () => {
-    setWarehouseName("")
-    setWarehouseDescription("")
-    setWarehouseActive(true)
-    setEditingWarehouse(null)
+    setWarehouseName(""); setWarehouseDescription(""); setWarehouseActive(true); setEditingWarehouse(null)
   }
 
   const openEditWarehouse = (warehouse: typeof warehouses[0]) => {
@@ -101,9 +105,35 @@ export default function SettingsPage() {
     setWarehouseDialogOpen(true)
   }
 
+  // ── Categorías ─────────────────────────────────────────────────────────────
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [categoryName, setCategoryName] = useState("")
+  const [categoryDescription, setCategoryDescription] = useState("")
+  const [categoryActive, setCategoryActive] = useState(true)
+  const [savingCategory, setSavingCategory] = useState(false)
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
+
+  // Atributos del diálogo de edición de categoría
+  const [attrFormOpen, setAttrFormOpen] = useState(false)
+  const [editingAttr, setEditingAttr] = useState<CategoryAttribute | null>(null)
+  const [attrLabel, setAttrLabel] = useState("")
+  const [attrKey, setAttrKey] = useState("")
+  const [attrKeyManuallyEdited, setAttrKeyManuallyEdited] = useState(false)
+  const [attrType, setAttrType] = useState<"text" | "number">("text")
+  const [attrPlaceholder, setAttrPlaceholder] = useState("")
+  const [savingAttr, setSavingAttr] = useState(false)
+  const [deletingAttr, setDeletingAttr] = useState<CategoryAttribute | null>(null)
+
+  const currentCategoryAttrs = useMemo(() => {
+    if (!editingCategory) return []
+    return categoryAttributes
+      .filter(a => a.category_id === editingCategory.id)
+      .sort((a, b) => a.sort_order - b.sort_order)
+  }, [categoryAttributes, editingCategory])
+
   const handleSaveCategory = async () => {
     if (!categoryName.trim()) return
-
     setSavingCategory(true)
     try {
       if (editingCategory) {
@@ -119,7 +149,6 @@ export default function SettingsPage() {
           is_active: categoryActive,
         })
       }
-
       resetCategoryForm()
       setCategoryDialogOpen(false)
     } finally {
@@ -128,10 +157,17 @@ export default function SettingsPage() {
   }
 
   const resetCategoryForm = () => {
-    setCategoryName("")
-    setCategoryDescription("")
-    setCategoryActive(true)
-    setEditingCategory(null)
+    setCategoryName(""); setCategoryDescription(""); setCategoryActive(true)
+    setEditingCategory(null); resetAttrForm()
+  }
+
+  const openEditCategory = (category: Category) => {
+    setEditingCategory(category)
+    setCategoryName(category.name)
+    setCategoryDescription(category.description || "")
+    setCategoryActive(category.is_active)
+    setAttrFormOpen(false)
+    setCategoryDialogOpen(true)
   }
 
   const handleDeleteCategory = async () => {
@@ -140,54 +176,121 @@ export default function SettingsPage() {
     setDeletingCategory(null)
   }
 
-  const openEditCategory = (category: Category) => {
-    setEditingCategory(category)
-    setCategoryName(category.name)
-    setCategoryDescription(category.description || "")
-    setCategoryActive(category.is_active)
-    setCategoryDialogOpen(true)
+  // ── Atributos ──────────────────────────────────────────────────────────────
+  const resetAttrForm = () => {
+    setAttrFormOpen(false); setEditingAttr(null)
+    setAttrLabel(""); setAttrKey(""); setAttrKeyManuallyEdited(false)
+    setAttrType("text"); setAttrPlaceholder("")
+  }
+
+  const openNewAttr = () => {
+    setEditingAttr(null)
+    setAttrLabel(""); setAttrKey(""); setAttrKeyManuallyEdited(false)
+    setAttrType("text"); setAttrPlaceholder("")
+    setAttrFormOpen(true)
+  }
+
+  const openEditAttr = (attr: CategoryAttribute) => {
+    setEditingAttr(attr)
+    setAttrLabel(attr.label)
+    setAttrKey(attr.key)
+    setAttrKeyManuallyEdited(true)
+    setAttrType(attr.input_type)
+    setAttrPlaceholder(attr.placeholder || "")
+    setAttrFormOpen(true)
+  }
+
+  const handleAttrLabelChange = (value: string) => {
+    setAttrLabel(value)
+    if (!attrKeyManuallyEdited) {
+      setAttrKey(slugify(value))
+    }
+  }
+
+  const handleSaveAttr = async () => {
+    if (!attrLabel.trim() || !attrKey.trim() || !editingCategory) return
+    setSavingAttr(true)
+    try {
+      if (editingAttr) {
+        await updateCategoryAttribute(editingAttr.id, {
+          label: attrLabel.trim(),
+          key: attrKey.trim(),
+          input_type: attrType,
+          placeholder: attrPlaceholder.trim() || null,
+        })
+      } else {
+        const maxOrder = currentCategoryAttrs.length > 0
+          ? Math.max(...currentCategoryAttrs.map(a => a.sort_order))
+          : 0
+        await addCategoryAttribute({
+          category_id: editingCategory.id,
+          label: attrLabel.trim(),
+          key: attrKey.trim(),
+          input_type: attrType,
+          placeholder: attrPlaceholder.trim() || null,
+          sort_order: maxOrder + 1,
+          is_active: true,
+        })
+      }
+      resetAttrForm()
+    } finally {
+      setSavingAttr(false)
+    }
+  }
+
+  const handleDeleteAttr = async () => {
+    if (!deletingAttr) return
+    await deleteCategoryAttribute(deletingAttr.id)
+    setDeletingAttr(null)
+  }
+
+  const moveAttr = async (attr: CategoryAttribute, direction: "up" | "down") => {
+    const sorted = [...currentCategoryAttrs]
+    const idx = sorted.findIndex(a => a.id === attr.id)
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= sorted.length) return
+
+    const current = sorted[idx]
+    const swap = sorted[swapIdx]
+    await Promise.all([
+      updateCategoryAttribute(current.id, { sort_order: swap.sort_order }),
+      updateCategoryAttribute(swap.id, { sort_order: current.sort_order }),
+    ])
   }
 
   return (
     <div className="flex flex-col h-full">
       <Header title="Configuración" />
-      
+
       <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="mx-auto max-w-4xl space-y-6">
-          {/* Business Settings */}
+
+          {/* Datos del Negocio */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Building2 className="h-5 w-5" />
                 Datos del Negocio
               </CardTitle>
-              <CardDescription>
-                Información general del negocio
-              </CardDescription>
+              <CardDescription>Información general del negocio</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label htmlFor="businessName">Nombre del Negocio</Label>
-                <Input
-                  id="businessName"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                />
+                <Input id="businessName" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
               </div>
               <Button>Guardar Cambios</Button>
             </CardContent>
           </Card>
 
-          {/* Inventory Settings */}
+          {/* Configuración de Inventario */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="h-5 w-5" />
                 Configuración de Inventario
               </CardTitle>
-              <CardDescription>
-                Parámetros para la gestión del stock
-              </CardDescription>
+              <CardDescription>Parámetros para la gestión del stock</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
@@ -207,16 +310,14 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Notifications */}
+          {/* Notificaciones */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bell className="h-5 w-5" />
                 Notificaciones
               </CardTitle>
-              <CardDescription>
-                Configurar alertas y notificaciones
-              </CardDescription>
+              <CardDescription>Configurar alertas y notificaciones</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
@@ -226,15 +327,12 @@ export default function SettingsPage() {
                     Recibir notificaciones cuando un producto tenga stock bajo
                   </p>
                 </div>
-                <Switch
-                  checked={notificationsEnabled}
-                  onCheckedChange={setNotificationsEnabled}
-                />
+                <Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} />
               </div>
             </CardContent>
           </Card>
 
-          {/* Warehouses Management */}
+          {/* Depósitos */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -242,66 +340,35 @@ export default function SettingsPage() {
                   <Warehouse className="h-5 w-5" />
                   Depósitos
                 </CardTitle>
-                <CardDescription>
-                  Administrar ubicaciones de almacenamiento
-                </CardDescription>
+                <CardDescription>Administrar ubicaciones de almacenamiento</CardDescription>
               </div>
-              <Dialog open={warehouseDialogOpen} onOpenChange={(open) => {
-                setWarehouseDialogOpen(open)
-                if (!open) resetWarehouseForm()
-              }}>
+              <Dialog open={warehouseDialogOpen} onOpenChange={(open) => { setWarehouseDialogOpen(open); if (!open) resetWarehouseForm() }}>
                 <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Agregar Depósito
-                  </Button>
+                  <Button><Plus className="mr-2 h-4 w-4" />Agregar Depósito</Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>
-                      {editingWarehouse ? "Editar Depósito" : "Nuevo Depósito"}
-                    </DialogTitle>
+                    <DialogTitle>{editingWarehouse ? "Editar Depósito" : "Nuevo Depósito"}</DialogTitle>
                     <DialogDescription>
-                      {editingWarehouse 
-                        ? "Modifique los datos del depósito"
-                        : "Agregue una nueva ubicación de almacenamiento"
-                      }
+                      {editingWarehouse ? "Modifique los datos del depósito" : "Agregue una nueva ubicación de almacenamiento"}
                     </DialogDescription>
                   </DialogHeader>
-                  
                   <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
                       <Label>Nombre</Label>
-                      <Input
-                        value={warehouseName}
-                        onChange={(e) => setWarehouseName(e.target.value)}
-                        placeholder="Nombre del depósito"
-                      />
+                      <Input value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} placeholder="Nombre del depósito" />
                     </div>
                     <div className="grid gap-2">
                       <Label>Descripción</Label>
-                      <Textarea
-                        value={warehouseDescription}
-                        onChange={(e) => setWarehouseDescription(e.target.value)}
-                        placeholder="Descripción opcional"
-                      />
+                      <Textarea value={warehouseDescription} onChange={(e) => setWarehouseDescription(e.target.value)} placeholder="Descripción opcional" />
                     </div>
                     <div className="flex items-center justify-between">
                       <Label>Activo</Label>
-                      <Switch
-                        checked={warehouseActive}
-                        onCheckedChange={setWarehouseActive}
-                      />
+                      <Switch checked={warehouseActive} onCheckedChange={setWarehouseActive} />
                     </div>
                   </div>
-                  
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => {
-                      setWarehouseDialogOpen(false)
-                      resetWarehouseForm()
-                    }}>
-                      Cancelar
-                    </Button>
+                    <Button variant="outline" onClick={() => { setWarehouseDialogOpen(false); resetWarehouseForm() }}>Cancelar</Button>
                     <Button onClick={handleSaveWarehouse} disabled={!warehouseName}>
                       {editingWarehouse ? "Guardar Cambios" : "Crear Depósito"}
                     </Button>
@@ -312,10 +379,7 @@ export default function SettingsPage() {
             <CardContent>
               <div className="space-y-3">
                 {warehouses.map(warehouse => (
-                  <div
-                    key={warehouse.id}
-                    className="flex items-center justify-between rounded-lg border border-border p-4"
-                  >
+                  <div key={warehouse.id} className="flex items-center justify-between rounded-lg border border-border p-4">
                     <div className="flex items-center gap-3">
                       <div className={`h-3 w-3 rounded-full ${warehouse.isActive ? "bg-green-500" : "bg-muted"}`} />
                       <div>
@@ -323,11 +387,7 @@ export default function SettingsPage() {
                         <p className="text-sm text-muted-foreground">{warehouse.description}</p>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditWarehouse(warehouse)}
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => openEditWarehouse(warehouse)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                   </div>
@@ -336,7 +396,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Categories Management */}
+          {/* Categorías */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -344,64 +404,220 @@ export default function SettingsPage() {
                   <Tags className="h-5 w-5" />
                   Categorías
                 </CardTitle>
-                <CardDescription>
-                  Administrar categorías de productos
-                </CardDescription>
+                <CardDescription>Administrar categorías y sus atributos específicos</CardDescription>
               </div>
               <Dialog open={categoryDialogOpen} onOpenChange={(open) => {
                 setCategoryDialogOpen(open)
                 if (!open) resetCategoryForm()
               }}>
                 <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Agregar Categoría
-                  </Button>
+                  <Button><Plus className="mr-2 h-4 w-4" />Agregar Categoría</Button>
                 </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      {editingCategory ? "Editar Categoría" : "Nueva Categoría"}
-                    </DialogTitle>
+
+                <DialogContent className="max-w-lg flex flex-col max-h-[90dvh]">
+                  <DialogHeader className="shrink-0">
+                    <DialogTitle>{editingCategory ? `Editar: ${editingCategory.name}` : "Nueva Categoría"}</DialogTitle>
                     <DialogDescription>
                       {editingCategory
-                        ? "Modifique los datos de la categoría"
-                        : "Agregue una nueva categoría de productos"
-                      }
+                        ? "Modificá los datos y administrá los atributos de esta categoría"
+                        : "Completá los datos para crear una nueva categoría"}
                     </DialogDescription>
                   </DialogHeader>
 
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label>Nombre</Label>
-                      <Input
-                        value={categoryName}
-                        onChange={(e) => setCategoryName(e.target.value)}
-                        placeholder="Nombre de la categoría"
-                      />
+                  <div className="overflow-y-auto flex-1 pr-1">
+                    {/* Datos de la categoría */}
+                    <div className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label>Nombre</Label>
+                        <Input
+                          value={categoryName}
+                          onChange={(e) => setCategoryName(e.target.value)}
+                          placeholder="Nombre de la categoría"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Descripción</Label>
+                        <Textarea
+                          value={categoryDescription}
+                          onChange={(e) => setCategoryDescription(e.target.value)}
+                          placeholder="Descripción opcional"
+                          rows={2}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label>Activa</Label>
+                        <Switch checked={categoryActive} onCheckedChange={setCategoryActive} />
+                      </div>
                     </div>
-                    <div className="grid gap-2">
-                      <Label>Descripción</Label>
-                      <Textarea
-                        value={categoryDescription}
-                        onChange={(e) => setCategoryDescription(e.target.value)}
-                        placeholder="Descripción opcional"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label>Activa</Label>
-                      <Switch
-                        checked={categoryActive}
-                        onCheckedChange={setCategoryActive}
-                      />
-                    </div>
+
+                    {/* Atributos — solo disponible al editar una categoría existente */}
+                    {editingCategory && (
+                      <>
+                        <Separator className="my-2" />
+                        <div className="py-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold">Atributos específicos</p>
+                            {!attrFormOpen && (
+                              <Button type="button" variant="outline" size="sm" onClick={openNewAttr}>
+                                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                                Agregar atributo
+                              </Button>
+                            )}
+                          </div>
+
+                          {/* Lista de atributos existentes */}
+                          {currentCategoryAttrs.length > 0 && (
+                            <div className="space-y-2">
+                              {currentCategoryAttrs.map((attr, idx) => (
+                                <div
+                                  key={attr.id}
+                                  className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2"
+                                >
+                                  {/* Reordenar */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => moveAttr(attr, "up")}
+                                      disabled={idx === 0}
+                                      className="text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                    >
+                                      <ChevronUp className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveAttr(attr, "down")}
+                                      disabled={idx === currentCategoryAttrs.length - 1}
+                                      className="text-muted-foreground hover:text-foreground disabled:opacity-20"
+                                    >
+                                      <ChevronDown className="h-3 w-3" />
+                                    </button>
+                                  </div>
+
+                                  {/* Info */}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium leading-none">{attr.label}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                      key: <span className="font-mono">{attr.key}</span>
+                                    </p>
+                                  </div>
+
+                                  {/* Tipo */}
+                                  <Badge variant="outline" className="shrink-0 text-xs gap-1">
+                                    {attr.input_type === "number"
+                                      ? <><Hash className="h-2.5 w-2.5" />Número</>
+                                      : <><Type className="h-2.5 w-2.5" />Texto</>
+                                    }
+                                  </Badge>
+
+                                  {/* Acciones */}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() => openEditAttr(attr)}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => setDeletingAttr(attr)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {currentCategoryAttrs.length === 0 && !attrFormOpen && (
+                            <p className="text-sm text-muted-foreground text-center py-2">
+                              Sin atributos. Usá "Agregar atributo" para definir campos como Talle, Hilo, Largo, etc.
+                            </p>
+                          )}
+
+                          {/* Formulario inline de atributo */}
+                          {attrFormOpen && (
+                            <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                {editingAttr ? "Editar atributo" : "Nuevo atributo"}
+                              </p>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="grid gap-1.5">
+                                  <Label className="text-xs">Nombre visible</Label>
+                                  <Input
+                                    value={attrLabel}
+                                    onChange={(e) => handleAttrLabelChange(e.target.value)}
+                                    placeholder="Ej: Talle"
+                                    className="h-8 text-sm"
+                                    autoFocus
+                                  />
+                                </div>
+                                <div className="grid gap-1.5">
+                                  <Label className="text-xs">Tipo</Label>
+                                  <Select value={attrType} onValueChange={(v) => setAttrType(v as "text" | "number")}>
+                                    <SelectTrigger className="h-8 text-sm">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="text">Texto libre</SelectItem>
+                                      <SelectItem value="number">Número</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="grid gap-1.5">
+                                  <Label className="text-xs">
+                                    Key interna
+                                    <span className="ml-1 font-normal text-muted-foreground">(auto)</span>
+                                  </Label>
+                                  <Input
+                                    value={attrKey}
+                                    onChange={(e) => { setAttrKey(e.target.value); setAttrKeyManuallyEdited(true) }}
+                                    placeholder="ej: talle"
+                                    className="h-8 text-sm font-mono"
+                                  />
+                                </div>
+                                <div className="grid gap-1.5">
+                                  <Label className="text-xs">Placeholder</Label>
+                                  <Input
+                                    value={attrPlaceholder}
+                                    onChange={(e) => setAttrPlaceholder(e.target.value)}
+                                    placeholder="Ej: 16"
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex gap-2 justify-end pt-1">
+                                <Button type="button" variant="outline" size="sm" onClick={resetAttrForm}>
+                                  Cancelar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={handleSaveAttr}
+                                  disabled={!attrLabel.trim() || !attrKey.trim() || savingAttr}
+                                >
+                                  {savingAttr ? "Guardando..." : editingAttr ? "Guardar" : "Agregar"}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
 
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => {
-                      setCategoryDialogOpen(false)
-                      resetCategoryForm()
-                    }}>
+                  <DialogFooter className="shrink-0 pt-2 border-t border-border mt-2">
+                    <Button variant="outline" onClick={() => { setCategoryDialogOpen(false); resetCategoryForm() }}>
                       Cancelar
                     </Button>
                     <Button onClick={handleSaveCategory} disabled={!categoryName.trim() || savingCategory}>
@@ -411,37 +627,38 @@ export default function SettingsPage() {
                 </DialogContent>
               </Dialog>
             </CardHeader>
+
             <CardContent>
               <div className="space-y-3">
                 {categories.map(category => {
                   const productCount = products.filter(
                     p => p.category_id === category.id || p.category === category.name
                   ).length
+                  const attrCount = categoryAttributes.filter(a => a.category_id === category.id).length
                   return (
                     <div
                       key={category.id}
                       className="flex items-center justify-between rounded-lg border border-border p-4"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`h-3 w-3 rounded-full ${category.is_active ? "bg-green-500" : "bg-muted"}`} />
+                        <div className={`h-3 w-3 shrink-0 rounded-full ${category.is_active ? "bg-green-500" : "bg-muted"}`} />
                         <div>
-                          <p className="font-medium">{category.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{category.name}</p>
+                            {attrCount > 0 && (
+                              <Badge variant="secondary" className="text-xs">
+                                {attrCount} atributo{attrCount !== 1 ? "s" : ""}
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">
-                            {category.description
-                              ? `${category.description} · `
-                              : ""}
-                            {productCount === 0
-                              ? "Sin productos"
-                              : `${productCount} producto${productCount !== 1 ? "s" : ""}`}
+                            {productCount === 0 ? "Sin productos" : `${productCount} producto${productCount !== 1 ? "s" : ""}`}
+                            {!category.is_active && " · Inactiva"}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditCategory(category)}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => openEditCategory(category)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
@@ -449,7 +666,9 @@ export default function SettingsPage() {
                           size="sm"
                           className="text-destructive hover:text-destructive hover:bg-destructive/10"
                           disabled={productCount > 0}
-                          title={productCount > 0 ? `No se puede eliminar: ${productCount} producto${productCount !== 1 ? "s" : ""} la usan. Desactivala en cambio.` : "Eliminar categoría"}
+                          title={productCount > 0
+                            ? `No se puede eliminar: ${productCount} producto${productCount !== 1 ? "s" : ""} la usan. Desactivala en cambio.`
+                            : "Eliminar categoría"}
                           onClick={() => setDeletingCategory(category)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -465,13 +684,13 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Delete category confirmation */}
+          {/* Confirmar eliminar categoría */}
           <AlertDialog open={!!deletingCategory} onOpenChange={(open) => !open && setDeletingCategory(null)}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Vas a eliminar la categoría <strong>{deletingCategory?.name}</strong>. Esta acción no se puede deshacer.
+                  Vas a eliminar <strong>{deletingCategory?.name}</strong> y todos sus atributos. Esta acción no se puede deshacer.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -486,23 +705,42 @@ export default function SettingsPage() {
             </AlertDialogContent>
           </AlertDialog>
 
-          {/* Users placeholder */}
+          {/* Confirmar eliminar atributo */}
+          <AlertDialog open={!!deletingAttr} onOpenChange={(open) => !open && setDeletingAttr(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar atributo?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vas a eliminar el atributo <strong>{deletingAttr?.label}</strong>. Los productos que ya tienen este
+                  valor guardado lo conservan internamente, pero dejará de mostrarse en formularios y fichas.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleDeleteAttr}
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Usuarios */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
                 Usuarios
               </CardTitle>
-              <CardDescription>
-                Gestión de usuarios del sistema
-              </CardDescription>
+              <CardDescription>Gestión de usuarios del sistema</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                La gestión de usuarios estará disponible próximamente.
-              </p>
+              <p className="text-sm text-muted-foreground">La gestión de usuarios estará disponible próximamente.</p>
             </CardContent>
           </Card>
+
         </div>
       </main>
     </div>

@@ -659,13 +659,23 @@ function ProductsPageInner() {
                   <div key={attr.key} className="grid gap-2">
                     <Label>{attr.label}</Label>
                     <Input
+                      type={attr.input_type === "number" ? "number" : "text"}
                       value={formAttributes[attr.key] || ""}
                       onChange={(e) => setFormAttributes(prev => ({ ...prev, [attr.key]: e.target.value }))}
-                      placeholder={attr.label}
+                      placeholder={attr.placeholder || attr.label}
                     />
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Hint cuando se crea una categoría nueva al vuelo: sus atributos
+                se configuran después desde Configuración → Categorías */}
+            {showNewCategoryInput && newCategoryName.trim() && (
+              <p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
+                Los atributos específicos de <strong>{newCategoryName.trim()}</strong> (Talle, Hilo, etc.) se configuran
+                desde <strong>Configuración → Categorías</strong> una vez creada.
+              </p>
             )}
 
             <div className="grid gap-2">

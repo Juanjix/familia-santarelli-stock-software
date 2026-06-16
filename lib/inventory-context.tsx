@@ -90,6 +90,9 @@ interface InventoryContextType {
   addBrand: (brand: Partial<Brand>) => Promise<Brand | null>
   updateBrand: (id: string, updates: Partial<Brand>) => Promise<void>
   deleteBrand: (id: string) => Promise<void>
+  addCategoryAttribute: (attr: Partial<CategoryAttribute>) => Promise<CategoryAttribute | null>
+  updateCategoryAttribute: (id: string, updates: Partial<CategoryAttribute>) => Promise<void>
+  deleteCategoryAttribute: (id: string) => Promise<void>
   addCoupon: (coupon: Partial<Coupon>) => Promise<void>
   useCoupon: (id: string) => Promise<void>
 }
@@ -505,6 +508,67 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
     
     setCategories(prev => prev.filter(c => c.id !== id))
+    // Cascade en DB elimina los category_attributes de esa categoría automáticamente
+    setCategoryAttributes(prev => prev.filter(a => a.category_id !== id))
+  }, [supabase])
+
+  const addCategoryAttribute = useCallback(async (attr: Partial<CategoryAttribute>): Promise<CategoryAttribute | null> => {
+    const { data, error } = await supabase
+      .from("category_attributes")
+      .insert({
+        category_id: attr.category_id,
+        key: attr.key || "",
+        label: attr.label || "",
+        input_type: attr.input_type || "text",
+        placeholder: attr.placeholder || null,
+        sort_order: attr.sort_order ?? 0,
+        is_active: attr.is_active !== false,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error adding category attribute:", error)
+      return null
+    }
+
+    setCategoryAttributes(prev => [...prev, data].sort((a, b) => a.sort_order - b.sort_order))
+    return data
+  }, [supabase])
+
+  const updateCategoryAttribute = useCallback(async (id: string, updates: Partial<CategoryAttribute>) => {
+    const { error } = await supabase
+      .from("category_attributes")
+      .update({
+        ...(updates.label !== undefined && { label: updates.label }),
+        ...(updates.key !== undefined && { key: updates.key }),
+        ...(updates.input_type !== undefined && { input_type: updates.input_type }),
+        ...(updates.placeholder !== undefined && { placeholder: updates.placeholder }),
+        ...(updates.sort_order !== undefined && { sort_order: updates.sort_order }),
+        ...(updates.is_active !== undefined && { is_active: updates.is_active }),
+      })
+      .eq("id", id)
+
+    if (error) {
+      console.error("Error updating category attribute:", error)
+      return
+    }
+
+    setCategoryAttributes(prev =>
+      prev.map(a => a.id === id ? { ...a, ...updates } : a)
+        .sort((a, b) => a.sort_order - b.sort_order)
+    )
+  }, [supabase])
+
+  const deleteCategoryAttribute = useCallback(async (id: string) => {
+    const { error } = await supabase.from("category_attributes").delete().eq("id", id)
+
+    if (error) {
+      console.error("Error deleting category attribute:", error)
+      return
+    }
+
+    setCategoryAttributes(prev => prev.filter(a => a.id !== id))
   }, [supabase])
 
   const addBrand = useCallback(async (brand: Partial<Brand>): Promise<Brand | null> => {
@@ -588,6 +652,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       addCategory,
       updateCategory,
       deleteCategory,
+      addCategoryAttribute,
+      updateCategoryAttribute,
+      deleteCategoryAttribute,
       addBrand,
       updateBrand,
       deleteBrand,

@@ -29,7 +29,8 @@ export interface CategoryAttribute {
   category_id: string
   key: string
   label: string
-  input_type: string
+  input_type: 'text' | 'number'
+  placeholder: string | null
   sort_order: number
   is_active: boolean
   created_at: string
