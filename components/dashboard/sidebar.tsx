@@ -15,6 +15,7 @@ import {
   Settings,
   ChevronLeft,
   Boxes,
+  Mail,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -25,6 +26,7 @@ const navOperacion = [
   { name: "Escanear", href: "/scan", icon: ScanLine },
   { name: "Productos", href: "/products", icon: Package },
   { name: "Inventario", href: "/inventory", icon: Boxes },
+  { name: "Sobres", href: "/sobres", icon: Mail },
   { name: "Ticket de Cambio", href: "/coupons", icon: Ticket },
 ]
 

@@ -1,3 +1,84 @@
+// ── Módulo Sobres ──────────────────────────────────────────
+export type EnvelopeStatus =
+  | 'received'
+  | 'quote_pending'
+  | 'quote_approved'
+  | 'in_workshop'
+  | 'ready'
+  | 'delivered'
+  | 'cancelled'
+
+export interface Customer {
+  id: string
+  first_name: string
+  last_name: string
+  dni: string
+  phone: string | null
+  address: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Jeweler {
+  id: string
+  name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface EnvelopeSubtype {
+  id: string
+  name: string
+  product_type: 'jewelry' | 'watch'
+  is_active: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface Envelope {
+  id: string
+  number: string
+  status: EnvelopeStatus
+  customer_id: string
+  received_at: string
+  received_warehouse_id: string
+  product_type: 'jewelry' | 'watch'
+  product_subtype_id: string | null
+  product_material: string | null
+  product_condition: 'very_good' | 'good' | 'regular'
+  product_condition_notes: string | null
+  purchased_at_store: boolean
+  purchase_date: string | null
+  work_description: string
+  requires_quote: boolean
+  quote_amount: number | null
+  quote_approved_at: string | null
+  jeweler_id: string | null
+  estimated_ready_date: string | null
+  delivered_at: string | null
+  delivered_by: string | null
+  delivery_notes: string | null
+  internal_notes: string | null
+  created_at: string
+  updated_at: string
+  // Joined
+  customer?: Customer
+  received_warehouse?: { id: string; name: string }
+  jeweler?: Jeweler
+  product_subtype?: EnvelopeSubtype
+}
+
+export interface EnvelopeStatusLog {
+  id: string
+  envelope_id: string
+  from_status: EnvelopeStatus | null
+  to_status: EnvelopeStatus
+  changed_by: string
+  notes: string | null
+  created_at: string
+}
+
 export interface Supplier {
   id: string
   name: string

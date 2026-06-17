@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog } from "./types"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -97,6 +97,19 @@ interface InventoryContextType {
   deleteCategoryAttribute: (id: string) => Promise<void>
   addCoupon: (coupon: Partial<Coupon>) => Promise<void>
   useCoupon: (id: string) => Promise<void>
+  // ── Sobres ────────────────────────────────────────────────
+  customers: Customer[]
+  jewelers: Jeweler[]
+  envelopeSubtypes: EnvelopeSubtype[]
+  addCustomer: (data: { first_name: string; last_name: string; dni: string; phone?: string | null; address?: string | null }) => Promise<Customer | null>
+  updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>
+  addJeweler: (name: string) => Promise<Jeweler | null>
+  updateJeweler: (id: string, updates: Partial<Jeweler>) => Promise<void>
+  deleteJeweler: (id: string) => Promise<void>
+  fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
+  createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype'>) => Promise<Envelope | null>
+  updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string) => Promise<void>
+  getEnvelopeStatusLog: (envelopeId: string) => Promise<EnvelopeStatusLog[]>
 }
 
 const InventoryContext = createContext<InventoryContextType | null>(null)
@@ -111,6 +124,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [brands, setBrands] = useState<Brand[]>([])
   const [categoryAttributes, setCategoryAttributes] = useState<CategoryAttribute[]>([])
   const [productStock, setProductStock] = useState<Map<string, StockByWarehouse[]>>(new Map())
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [jewelers, setJewelers] = useState<Jeweler[]>([])
+  const [envelopeSubtypes, setEnvelopeSubtypes] = useState<EnvelopeSubtype[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -122,7 +138,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     
     try {
       // Fetch all data in parallel
-      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes, categoryAttributesRes] = await Promise.all([
+      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes, categoryAttributesRes, customersRes, jewelersRes, envelopeSubtypesRes] = await Promise.all([
         supabase.from("products").select(`
           *,
           suppliers(id, name, contact, created_at)
@@ -148,6 +164,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         supabase.from("categories").select("*").order("name"),
         supabase.from("brands").select("*").order("name"),
         supabase.from("category_attributes").select("*").order("sort_order"),
+        supabase.from("customers").select("*").order("last_name"),
+        supabase.from("jewelers").select("*").order("name"),
+        supabase.from("envelope_subtypes").select("*").order("product_type").order("sort_order"),
       ])
 
       if (productsRes.error) throw productsRes.error
@@ -159,6 +178,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       if (categoriesRes.error) throw categoriesRes.error
       if (brandsRes.error) throw brandsRes.error
       if (categoryAttributesRes.error) throw categoryAttributesRes.error
+      if (customersRes.error) throw customersRes.error
+      if (jewelersRes.error) throw jewelersRes.error
+      if (envelopeSubtypesRes.error) throw envelopeSubtypesRes.error
 
       setProducts((productsRes.data || []).map(normalizeProduct))
       setWarehouses((warehousesRes.data || []).map(normalizeWarehouse))
@@ -168,6 +190,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setCategories(categoriesRes.data || [])
       setBrands(brandsRes.data || [])
       setCategoryAttributes(categoryAttributesRes.data || [])
+      setCustomers(customersRes.data || [])
+      setJewelers(jewelersRes.data || [])
+      setEnvelopeSubtypes(envelopeSubtypesRes.data || [])
       
       // Build product stock map
       const stockMap = new Map<string, StockByWarehouse[]>()
@@ -645,6 +670,90 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     setBrands(prev => prev.filter(b => b.id !== id))
   }, [supabase])
 
+  // ── Customers ────────────────────────────────────────────
+  const addCustomer = useCallback(async (data: { first_name: string; last_name: string; dni: string; phone?: string | null; address?: string | null }): Promise<Customer | null> => {
+    const { data: created, error } = await supabase.from("customers").insert(data).select().single()
+    if (error) { console.error("Error adding customer:", error); return null }
+    setCustomers(prev => [...prev, created].sort((a, b) => a.last_name.localeCompare(b.last_name)))
+    return created
+  }, [supabase])
+
+  const updateCustomer = useCallback(async (id: string, updates: Partial<Customer>): Promise<void> => {
+    const { error } = await supabase.from("customers").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
+    if (error) { console.error("Error updating customer:", error); return }
+    setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c))
+  }, [supabase])
+
+  // ── Jewelers ────────────────────────────────────────────
+  const addJeweler = useCallback(async (name: string): Promise<Jeweler | null> => {
+    const { data: created, error } = await supabase.from("jewelers").insert({ name }).select().single()
+    if (error) { console.error("Error adding jeweler:", error); return null }
+    setJewelers(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+    return created
+  }, [supabase])
+
+  const updateJeweler = useCallback(async (id: string, updates: Partial<Jeweler>): Promise<void> => {
+    const { error } = await supabase.from("jewelers").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
+    if (error) { console.error("Error updating jeweler:", error); return }
+    setJewelers(prev => prev.map(j => j.id === id ? { ...j, ...updates, updated_at: new Date().toISOString() } : j))
+  }, [supabase])
+
+  const deleteJeweler = useCallback(async (id: string): Promise<void> => {
+    const { error } = await supabase.from("jewelers").delete().eq("id", id)
+    if (error) { console.error("Error deleting jeweler:", error); return }
+    setJewelers(prev => prev.filter(j => j.id !== id))
+  }, [supabase])
+
+  // ── Envelopes (fetched on demand, not in global state) ─
+  const fetchEnvelopes = useCallback(async (filters?: { status?: EnvelopeStatus; search?: string }): Promise<Envelope[]> => {
+    let query = supabase.from("envelopes").select(`
+      *,
+      customer:customers(id, first_name, last_name, dni, phone, address, created_at, updated_at),
+      received_warehouse:warehouses!received_warehouse_id(id, name),
+      jeweler:jewelers(id, name, is_active, created_at, updated_at),
+      product_subtype:envelope_subtypes(id, name, product_type, is_active, sort_order, created_at)
+    `).order("created_at", { ascending: false })
+    if (filters?.status) query = query.eq("status", filters.status)
+    const { data, error } = await query
+    if (error) { console.error("Error fetching envelopes:", error); return [] }
+    return (data || []) as Envelope[]
+  }, [supabase])
+
+  const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype'>): Promise<Envelope | null> => {
+    const { data: created, error } = await supabase.from("envelopes").insert({ ...data, number: '' }).select(`
+      *,
+      customer:customers(id, first_name, last_name, dni, phone, address, created_at, updated_at),
+      received_warehouse:warehouses!received_warehouse_id(id, name),
+      jeweler:jewelers(id, name, is_active, created_at, updated_at),
+      product_subtype:envelope_subtypes(id, name, product_type, is_active, sort_order, created_at)
+    `).single()
+    if (error) { console.error("Error creating envelope:", error); return null }
+    // Log initial status
+    await supabase.from("envelope_status_log").insert({ envelope_id: created.id, from_status: null, to_status: 'received', changed_by: 'Sistema' })
+    return created as Envelope
+  }, [supabase])
+
+  const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string): Promise<void> => {
+    const { data: current } = await supabase.from("envelopes").select("status").eq("id", id).single()
+    const { error } = await supabase.from("envelopes").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
+    if (error) { console.error("Error updating envelope:", error); return }
+    if (updates.status && current && updates.status !== current.status) {
+      await supabase.from("envelope_status_log").insert({
+        envelope_id: id,
+        from_status: current.status,
+        to_status: updates.status,
+        changed_by: 'Sistema',
+        notes: statusNote || null,
+      })
+    }
+  }, [supabase])
+
+  const getEnvelopeStatusLog = useCallback(async (envelopeId: string): Promise<EnvelopeStatusLog[]> => {
+    const { data, error } = await supabase.from("envelope_status_log").select("*").eq("envelope_id", envelopeId).order("created_at")
+    if (error) { console.error("Error fetching status log:", error); return [] }
+    return (data || []) as EnvelopeStatusLog[]
+  }, [supabase])
+
   return (
     <InventoryContext.Provider value={{
       products,
@@ -684,6 +793,18 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       deleteBrand,
       addCoupon,
       useCoupon,
+      customers,
+      jewelers,
+      envelopeSubtypes,
+      addCustomer,
+      updateCustomer,
+      addJeweler,
+      updateJeweler,
+      deleteJeweler,
+      fetchEnvelopes,
+      createEnvelope,
+      updateEnvelope,
+      getEnvelopeStatusLog,
     }}>
       {children}
     </InventoryContext.Provider>

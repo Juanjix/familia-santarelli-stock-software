@@ -54,7 +54,7 @@ import {
   Hash,
   Type,
 } from "lucide-react"
-import type { Brand, Category, CategoryAttribute, Supplier } from "@/lib/types"
+import type { Brand, Category, CategoryAttribute, Supplier, Jeweler } from "@/lib/types"
 
 function slugify(text: string): string {
   return text
@@ -72,6 +72,7 @@ export default function SettingsPage() {
     categoryAttributes, addCategoryAttribute, updateCategoryAttribute, deleteCategoryAttribute,
     brands, addBrand, updateBrand, deleteBrand,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
+    jewelers, addJeweler, updateJeweler, deleteJeweler,
     products,
   } = useInventory()
 
@@ -303,6 +304,45 @@ export default function SettingsPage() {
     if (!deletingSupplier) return
     await deleteSupplier(deletingSupplier.id)
     setDeletingSupplier(null)
+  }
+
+  // ── Joyeros ────────────────────────────────────────────────────────────────
+  const [jewelerDialogOpen, setJewelerDialogOpen] = useState(false)
+  const [editingJeweler, setEditingJeweler] = useState<Jeweler | null>(null)
+  const [jewelerDialogName, setJewelerDialogName] = useState("")
+  const [jewelerDialogActive, setJewelerDialogActive] = useState(true)
+  const [savingJeweler, setSavingJeweler] = useState(false)
+  const [deletingJeweler, setDeletingJeweler] = useState<Jeweler | null>(null)
+
+  const handleSaveJeweler = async () => {
+    if (!jewelerDialogName.trim()) return
+    setSavingJeweler(true)
+    try {
+      if (editingJeweler) {
+        await updateJeweler(editingJeweler.id, { name: jewelerDialogName.trim(), is_active: jewelerDialogActive })
+      } else {
+        await addJeweler(jewelerDialogName.trim())
+      }
+      resetJewelerForm()
+      setJewelerDialogOpen(false)
+    } finally {
+      setSavingJeweler(false)
+    }
+  }
+
+  const resetJewelerForm = () => {
+    setJewelerDialogName(""); setJewelerDialogActive(true); setEditingJeweler(null)
+  }
+
+  const openEditJeweler = (j: Jeweler) => {
+    setEditingJeweler(j); setJewelerDialogName(j.name); setJewelerDialogActive(j.is_active)
+    setJewelerDialogOpen(true)
+  }
+
+  const handleDeleteJeweler = async () => {
+    if (!deletingJeweler) return
+    await deleteJeweler(deletingJeweler.id)
+    setDeletingJeweler(null)
   }
 
   // ── Marcas ─────────────────────────────────────────────────────────────────
@@ -1083,6 +1123,102 @@ export default function SettingsPage() {
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={handleDeleteAttr}
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Joyeros */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Joyeros
+                  </CardTitle>
+                  <CardDescription>Talleres y artesanos externos para reparaciones</CardDescription>
+                </div>
+                <Dialog open={jewelerDialogOpen} onOpenChange={(open) => { setJewelerDialogOpen(open); if (!open) resetJewelerForm() }}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" onClick={() => resetJewelerForm()}>
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      Agregar
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>{editingJeweler ? "Editar joyero" : "Nuevo joyero"}</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-3 py-2">
+                      <div className="grid gap-1.5">
+                        <Label>Nombre</Label>
+                        <Input value={jewelerDialogName} onChange={(e) => setJewelerDialogName(e.target.value)} placeholder="Ej: Carlos Pérez" autoFocus />
+                      </div>
+                      {editingJeweler && (
+                        <div className="flex items-center gap-2">
+                          <Switch checked={jewelerDialogActive} onCheckedChange={setJewelerDialogActive} id="jeweler-active" />
+                          <Label htmlFor="jeweler-active">Activo</Label>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => { setJewelerDialogOpen(false); resetJewelerForm() }}>Cancelar</Button>
+                      <Button onClick={handleSaveJeweler} disabled={!jewelerDialogName.trim() || savingJeweler}>
+                        {savingJeweler ? "Guardando..." : editingJeweler ? "Guardar" : "Crear"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {jewelers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hay joyeros registrados.</p>
+              ) : (
+                <div className="divide-y divide-border rounded-md border">
+                  {jewelers.map((j) => (
+                    <div key={j.id} className="flex items-center justify-between px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{j.name}</span>
+                        {!j.is_active && <Badge variant="secondary" className="text-xs">Inactivo</Badge>}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditJeweler(j)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => setDeletingJeweler(j)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Confirmar eliminar joyero */}
+          <AlertDialog open={!!deletingJeweler} onOpenChange={(open) => !open && setDeletingJeweler(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar joyero?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vas a eliminar <strong>{deletingJeweler?.name}</strong>. Los sobres asignados a este joyero quedarán sin asignar.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleDeleteJeweler}
                 >
                   Eliminar
                 </AlertDialogAction>
