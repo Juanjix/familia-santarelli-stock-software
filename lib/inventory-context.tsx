@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, QuoteStatus } from "./types"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -107,7 +107,7 @@ interface InventoryContextType {
   updateJeweler: (id: string, updates: Partial<Jeweler>) => Promise<void>
   deleteJeweler: (id: string) => Promise<void>
   fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
-  createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype'>) => Promise<Envelope | null>
+  createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at'>) => Promise<Envelope | null>
   updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string) => Promise<void>
   getEnvelopeStatusLog: (envelopeId: string) => Promise<EnvelopeStatusLog[]>
 }
@@ -719,7 +719,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return (data || []) as Envelope[]
   }, [supabase])
 
-  const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype'>): Promise<Envelope | null> => {
+  const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at'>): Promise<Envelope | null> => {
     const { data: created, error } = await supabase.from("envelopes").insert({ ...data, number: '' }).select(`
       *,
       customer:customers(id, first_name, last_name, dni, phone, address, created_at, updated_at),

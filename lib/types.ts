@@ -8,6 +8,8 @@ export type EnvelopeStatus =
   | 'delivered'
   | 'cancelled'
 
+export type QuoteStatus = 'not_required' | 'pending' | 'informed' | 'approved' | 'rejected'
+
 export interface Customer {
   id: string
   first_name: string
@@ -51,8 +53,9 @@ export interface Envelope {
   purchased_at_store: boolean
   purchase_date: string | null
   work_description: string
-  requires_quote: boolean
+  quote_status: QuoteStatus
   quote_amount: number | null
+  quote_informed_at: string | null
   quote_approved_at: string | null
   jeweler_id: string | null
   estimated_ready_date: string | null
@@ -230,8 +233,6 @@ export interface Coupon {
   usedAt?: string
   expiresAt?: string
 }
-
-export type Category = "Anillos" | "Collares" | "Pulseras" | "Aros" | "Cadenas" | "Relojes" | "Accesorios"
 
 export type Material = "Oro" | "Plata" | "Acero" | "Mixto"
 
