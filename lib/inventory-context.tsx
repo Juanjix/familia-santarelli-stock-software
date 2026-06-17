@@ -77,7 +77,7 @@ interface InventoryContextType {
   deleteProduct: (id: string) => Promise<void>
   toggleProductStatus: (id: string) => Promise<void>
   adjustStock: (productId: string, warehouseId: string, quantity: number, type: "in" | "out" | "adjustment", notes?: string) => Promise<void>
-  transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes?: string) => Promise<void>
+  transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes?: string) => Promise<boolean>
   getStockByWarehouse: (productId: string) => StockByWarehouse[]
   getProductById: (id: string) => Product | undefined
   addWarehouse: (warehouse: Partial<Warehouse>) => Promise<void>
@@ -320,12 +320,12 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, [supabase, refreshData])
 
   const transferStock = useCallback(async (
-    productId: string, 
-    fromWarehouseId: string, 
-    toWarehouseId: string, 
-    quantity: number, 
+    productId: string,
+    fromWarehouseId: string,
+    toWarehouseId: string,
+    quantity: number,
     notes?: string
-  ) => {
+  ): Promise<boolean> => {
     const { error } = await supabase.rpc("update_stock", {
       p_product_id: productId,
       p_warehouse_id: fromWarehouseId,
@@ -335,13 +335,14 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       p_user_name: "Usuario",
       p_to_warehouse_id: toWarehouseId,
     })
-    
+
     if (error) {
       console.error("Error transferring stock:", error)
-      return
+      return false
     }
-    
+
     await refreshData()
+    return true
   }, [supabase, refreshData])
 
   const addWarehouse = useCallback(async (warehouse: Partial<Warehouse>) => {
