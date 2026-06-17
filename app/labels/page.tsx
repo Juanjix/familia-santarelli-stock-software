@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
@@ -23,55 +23,87 @@ import {
 } from "@/components/ui/dialog"
 import { Search, Printer, Tags, Barcode } from "lucide-react"
 
-// Simple barcode component using CSS
-function BarcodeDisplay({ code }: { code: string }) {
-  const bars = useMemo(() => {
-    // Simple visual representation of barcode
-    const result = []
-    for (let i = 0; i < code.length; i++) {
-      const digit = parseInt(code[i])
-      for (let j = 0; j < 4; j++) {
-        const isBlack = (digit + j) % 2 === 0
-        result.push(
-          <div
-            key={`${i}-${j}`}
-            className={`h-12 ${isBlack ? 'bg-foreground' : 'bg-background'}`}
-            style={{ width: isBlack ? '2px' : '1px' }}
-          />
-        )
-      }
-    }
-    return result
-  }, [code])
+// Label physical dimensions (thermoprint roll: 56mm × 25mm)
+const LABEL_W_MM = 56
+const LABEL_H_MM = 25
+
+// Real label using Libre Barcode 128 font — matches the print output exactly
+function LabelPreview({ product, scale = 3.5 }: {
+  product: { sku: string; barcode: string | null; internal_code?: string | null }
+  scale?: number
+}) {
+  const code = product.barcode || ""
+  const identifier = (product.internal_code || product.sku || "").toUpperCase()
+
+  const w = LABEL_W_MM * scale
+  const h = LABEL_H_MM * scale
 
   return (
-    <div className="flex items-end justify-center gap-px">
-      {bars}
-    </div>
-  )
-}
+    <div
+      style={{
+        width: `${w}px`,
+        height: `${h}px`,
+        padding: `${1.5 * scale}px ${2 * scale}px`,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        alignItems: "center",
+        border: "1px solid #e2e8f0",
+        background: "#ffffff",
+        boxSizing: "border-box",
+        fontFamily: "Arial, sans-serif",
+        overflow: "hidden",
+      }}
+    >
+      {/* Top: identifier */}
+      <div style={{
+        fontSize: `${7 * scale / 3.5}px`,
+        fontWeight: 700,
+        letterSpacing: "0.5px",
+        textTransform: "uppercase",
+        color: "#000",
+        width: "100%",
+        textAlign: "center",
+        lineHeight: 1,
+        flexShrink: 0,
+      }}>
+        {identifier}
+      </div>
 
-interface LabelPreviewProps {
-  product: {
-    name: string
-    sku: string
-    barcode: string
-    price: number
-    material: string
-  }
-}
+      {/* Center: barcode */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "100%",
+        overflow: "hidden",
+        minHeight: 0,
+      }}>
+        <div style={{
+          fontFamily: "'Libre Barcode 128', monospace",
+          fontSize: `${28 * scale / 3.5}px`,
+          lineHeight: 1,
+          color: "#000",
+          whiteSpace: "nowrap",
+          maxWidth: "100%",
+        }}>
+          {code ? `*${code}*` : "*000000000000*"}
+        </div>
+      </div>
 
-function LabelPreview({ product }: LabelPreviewProps) {
-  return (
-    <div className="w-[200px] border border-border bg-background p-3 text-center">
-      <div className="mb-1 text-xs font-semibold text-muted-foreground">SANTARELLI</div>
-      <div className="mb-2 text-sm font-bold text-foreground line-clamp-2">{product.name}</div>
-      <div className="mb-2 text-xs text-muted-foreground">{product.material}</div>
-      <BarcodeDisplay code={product.barcode} />
-      <div className="mt-1 font-mono text-xs text-muted-foreground">{product.barcode}</div>
-      <div className="mt-2 text-xs text-muted-foreground">SKU: {product.sku}</div>
-      <div className="mt-1 text-lg font-bold text-foreground">
-        {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(product.price)}
+      {/* Bottom: barcode number */}
+      <div style={{
+        fontSize: `${6.5 * scale / 3.5}px`,
+        fontFamily: "monospace",
+        letterSpacing: "1px",
+        color: "#000",
+        width: "100%",
+        textAlign: "center",
+        lineHeight: 1,
+        flexShrink: 0,
+      }}>
+        {code || "—"}
       </div>
     </div>
   )
@@ -83,13 +115,26 @@ export default function LabelsPage() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [quantities, setQuantities] = useState<Map<string, number>>(new Map())
   const [previewProduct, setPreviewProduct] = useState<typeof products[0] | null>(null)
-  const printRef = useRef<HTMLDivElement>(null)
+  const [fontLoaded, setFontLoaded] = useState(false)
 
+  // Load Libre Barcode 128 font so preview matches print output
+  useEffect(() => {
+    const link = document.createElement("link")
+    link.rel = "stylesheet"
+    link.href = "https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap"
+    link.onload = () => setFontLoaded(true)
+    document.head.appendChild(link)
+    return () => { document.head.removeChild(link) }
+  }, [])
+
+  // Only show products that have a barcode (required to print)
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
-      return product.name.toLowerCase().includes(search.toLowerCase()) ||
+      const hasBarcode = !!product.barcode
+      const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.sku.toLowerCase().includes(search.toLowerCase()) ||
-        product.barcode.includes(search)
+        (product.barcode || "").includes(search)
+      return hasBarcode && matchesSearch
     })
   }, [products, search])
 
@@ -99,7 +144,6 @@ export default function LabelsPage() {
       newSelected.delete(productId)
     } else {
       newSelected.add(productId)
-      // Initialize quantity to 1 if not already set
       if (!quantities.has(productId)) {
         setQuantities(new Map(quantities).set(productId, 1))
       }
@@ -127,32 +171,29 @@ export default function LabelsPage() {
 
   const getTotalLabels = () => {
     let total = 0
-    selectedProducts.forEach(productId => {
-      total += quantities.get(productId) || 1
-    })
+    selectedProducts.forEach(id => { total += quantities.get(id) || 1 })
     return total
   }
 
   const handlePrint = () => {
-    const selectedProductsList = products.filter(p => selectedProducts.has(p.id))
+    const selectedProductsList = products.filter(p => selectedProducts.has(p.id) && p.barcode)
     if (selectedProductsList.length === 0) return
 
-    const printWindow = window.open('', '_blank')
+    const printWindow = window.open("", "_blank")
     if (!printWindow) return
 
     let labelsHtml = ""
     selectedProductsList.forEach(product => {
       const quantity = quantities.get(product.id) || 1
+      const identifier = ((product.internal_code || product.sku) || "").toUpperCase()
+      const code = product.barcode || ""
+
       for (let i = 0; i < quantity; i++) {
         labelsHtml += `
-          <div style="width: 200px; border: 1px solid #ccc; padding: 12px; text-align: center; page-break-inside: avoid; margin: 8px;">
-            <div style="font-size: 10px; font-weight: 600; color: #666; margin-bottom: 4px;">SANTARELLI</div>
-            <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px;">${product.name}</div>
-            <div style="font-size: 10px; color: #666; margin-bottom: 8px;">${product.material}</div>
-            <div style="font-family: 'Libre Barcode 128', monospace; font-size: 48px; letter-spacing: -2px;">*${product.barcode}*</div>
-            <div style="font-family: monospace; font-size: 10px; color: #666;">${product.barcode}</div>
-            <div style="font-size: 10px; color: #666; margin-top: 8px;">SKU: ${product.sku}</div>
-            <div style="font-size: 16px; font-weight: bold; margin-top: 4px;">$${product.price.toLocaleString('es-AR')}</div>
+          <div class="label">
+            <div class="label-id">${identifier}</div>
+            <div class="label-barcode">*${code}*</div>
+            <div class="label-num">${code}</div>
           </div>
         `
       }
@@ -162,18 +203,84 @@ export default function LabelsPage() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Etiquetas - Santarelli</title>
+          <meta charset="UTF-8">
+          <title>Etiquetas — Santarelli</title>
           <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
           <style>
-            body { font-family: Arial, sans-serif; }
-            .labels-container { display: flex; flex-wrap: wrap; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+
+            @page {
+              size: auto;
+              margin: 4mm;
+            }
+
+            body {
+              font-family: Arial, sans-serif;
+              background: #fff;
+            }
+
+            .labels-container {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 2mm;
+            }
+
+            .label {
+              width: ${LABEL_W_MM}mm;
+              height: ${LABEL_H_MM}mm;
+              padding: 1.5mm 2mm;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              align-items: center;
+              overflow: hidden;
+              page-break-inside: avoid;
+            }
+
+            .label-id {
+              font-size: 7pt;
+              font-weight: 700;
+              letter-spacing: 0.5px;
+              text-transform: uppercase;
+              color: #000;
+              text-align: center;
+              line-height: 1;
+              width: 100%;
+            }
+
+            .label-barcode {
+              flex: 1;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              width: 100%;
+              overflow: hidden;
+              font-family: 'Libre Barcode 128', monospace;
+              font-size: 28pt;
+              line-height: 1;
+              color: #000;
+              text-align: center;
+            }
+
+            .label-num {
+              font-size: 6.5pt;
+              font-family: monospace;
+              letter-spacing: 1px;
+              color: #000;
+              text-align: center;
+              line-height: 1;
+              width: 100%;
+            }
           </style>
         </head>
         <body>
           <div class="labels-container">
             ${labelsHtml}
           </div>
-          <script>window.print();</script>
+          <script>
+            // Wait for font before printing
+            document.fonts.ready.then(() => { window.print(); });
+          </script>
         </body>
       </html>
     `)
@@ -185,51 +292,51 @@ export default function LabelsPage() {
       <Header title="Etiquetas" />
 
       <main className="flex-1 overflow-auto p-4 md:p-6">
+        {/* Toolbar */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 items-center gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nombre, SKU o código de barras..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nombre, SKU o código de barras..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
           <div className="flex items-center gap-2">
             {selectedProducts.size > 0 && (
-              <Badge variant="secondary" className="mr-2">
-                {selectedProducts.size} seleccionados ({getTotalLabels()} etiquetas)
+              <Badge variant="secondary">
+                {selectedProducts.size} seleccionados · {getTotalLabels()} etiquetas
               </Badge>
             )}
-            <Button
-              onClick={handlePrint}
-              disabled={selectedProducts.size === 0}
-            >
+            <Button onClick={handlePrint} disabled={selectedProducts.size === 0}>
               <Printer className="mr-2 h-4 w-4" />
-              Imprimir Etiquetas
+              Imprimir
             </Button>
           </div>
         </div>
 
+        {/* Label size info */}
+        <p className="mb-3 text-xs text-muted-foreground">
+          Formato: {LABEL_W_MM}×{LABEL_H_MM} mm — solo se listan productos con código de barras asignado
+        </p>
+
+        {/* Products table */}
         <div className="rounded-lg border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-12">
+                <TableHead className="w-10">
                   <Checkbox
                     checked={selectedProducts.size === filteredProducts.length && filteredProducts.length > 0}
                     onCheckedChange={toggleAll}
                   />
                 </TableHead>
                 <TableHead>Producto</TableHead>
-                <TableHead>SKU</TableHead>
+                <TableHead>Identificador</TableHead>
                 <TableHead>Código de Barras</TableHead>
-                <TableHead>Material</TableHead>
-                <TableHead className="text-right">Precio</TableHead>
                 <TableHead className="w-32 text-center">Cantidad</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead className="text-right">Vista previa</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -243,7 +350,7 @@ export default function LabelsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted shrink-0">
                         <Tags className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <div>
@@ -252,24 +359,18 @@ export default function LabelsPage() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground">
-                    {product.sku}
+                  <TableCell className="font-mono text-sm font-semibold">
+                    {(product.internal_code || product.sku || "").toUpperCase()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Barcode className="h-4 w-4 text-muted-foreground" />
+                      <Barcode className="h-4 w-4 text-muted-foreground shrink-0" />
                       <span className="font-mono text-sm">{product.barcode}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {product.material}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(product.price)}
-                  </TableCell>
                   <TableCell>
                     {selectedProducts.has(product.id) ? (
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center justify-center gap-1">
                         <Button
                           variant="outline"
                           size="sm"
@@ -296,40 +397,53 @@ export default function LabelsPage() {
                         </Button>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground text-sm">-</span>
+                      <span className="text-muted-foreground text-sm text-center block">—</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPreviewProduct(product)}
-                    >
-                      Vista previa
+                    <Button variant="ghost" size="sm" onClick={() => setPreviewProduct(product)}>
+                      Ver
                     </Button>
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredProducts.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    {search ? "Sin resultados para esa búsqueda." : "No hay productos con código de barras asignado."}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>
 
         {filteredProducts.length > 50 && (
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            Mostrando 50 de {filteredProducts.length} productos. Use el buscador para filtrar.
+            Mostrando 50 de {filteredProducts.length}. Usá el buscador para filtrar.
           </p>
         )}
       </main>
 
       {/* Label Preview Dialog */}
       <Dialog open={!!previewProduct} onOpenChange={() => setPreviewProduct(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Vista Previa de Etiqueta</DialogTitle>
+            <DialogTitle>Vista previa — {LABEL_W_MM}×{LABEL_H_MM} mm</DialogTitle>
           </DialogHeader>
-          <div className="flex justify-center py-4">
-            {previewProduct && <LabelPreview product={previewProduct} />}
+
+          <div className="flex flex-col items-center gap-4 py-4">
+            {!fontLoaded && (
+              <p className="text-xs text-muted-foreground">Cargando fuente de barras...</p>
+            )}
+            {previewProduct && (
+              <LabelPreview product={previewProduct} scale={3.5} />
+            )}
+            <p className="text-xs text-muted-foreground text-center">
+              Vista a escala — el impreso usará exactamente este layout
+            </p>
           </div>
+
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setPreviewProduct(null)}>
               Cerrar
@@ -337,11 +451,14 @@ export default function LabelsPage() {
             <Button onClick={() => {
               if (previewProduct) {
                 setSelectedProducts(new Set([previewProduct.id]))
+                if (!quantities.has(previewProduct.id)) {
+                  setQuantities(new Map(quantities).set(previewProduct.id, 1))
+                }
                 handlePrint()
               }
             }}>
               <Printer className="mr-2 h-4 w-4" />
-              Imprimir
+              Imprimir 1
             </Button>
           </div>
         </DialogContent>
