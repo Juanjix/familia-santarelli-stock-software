@@ -48,12 +48,13 @@ import {
   Warehouse,
   Tags,
   Tag,
+  Truck,
   ChevronUp,
   ChevronDown,
   Hash,
   Type,
 } from "lucide-react"
-import type { Brand, Category, CategoryAttribute } from "@/lib/types"
+import type { Brand, Category, CategoryAttribute, Supplier } from "@/lib/types"
 
 function slugify(text: string): string {
   return text
@@ -70,6 +71,7 @@ export default function SettingsPage() {
     categories, addCategory, updateCategory, deleteCategory,
     categoryAttributes, addCategoryAttribute, updateCategoryAttribute, deleteCategoryAttribute,
     brands, addBrand, updateBrand, deleteBrand,
+    suppliers, addSupplier, updateSupplier, deleteSupplier,
     products,
   } = useInventory()
 
@@ -251,6 +253,56 @@ export default function SettingsPage() {
     if (!deletingAttr) return
     await deleteCategoryAttribute(deletingAttr.id)
     setDeletingAttr(null)
+  }
+
+  // ── Proveedores ────────────────────────────────────────────────────────────
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false)
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const [supplierDialogName, setSupplierDialogName] = useState("")
+  const [supplierDialogContact, setSupplierDialogContact] = useState("")
+  const [supplierDialogActive, setSupplierDialogActive] = useState(true)
+  const [savingSupplier, setSavingSupplier] = useState(false)
+  const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null)
+
+  const handleSaveSupplier = async () => {
+    if (!supplierDialogName.trim()) return
+    setSavingSupplier(true)
+    try {
+      if (editingSupplier) {
+        await updateSupplier(editingSupplier.id, {
+          name: supplierDialogName.trim(),
+          contact: supplierDialogContact.trim() || null,
+          is_active: supplierDialogActive,
+        })
+      } else {
+        await addSupplier({
+          name: supplierDialogName.trim(),
+          contact: supplierDialogContact.trim() || null,
+        })
+      }
+      resetSupplierForm()
+      setSupplierDialogOpen(false)
+    } finally {
+      setSavingSupplier(false)
+    }
+  }
+
+  const resetSupplierForm = () => {
+    setSupplierDialogName(""); setSupplierDialogContact(""); setSupplierDialogActive(true); setEditingSupplier(null)
+  }
+
+  const openEditSupplier = (supplier: Supplier) => {
+    setEditingSupplier(supplier)
+    setSupplierDialogName(supplier.name)
+    setSupplierDialogContact(supplier.contact || "")
+    setSupplierDialogActive(supplier.is_active)
+    setSupplierDialogOpen(true)
+  }
+
+  const handleDeleteSupplier = async () => {
+    if (!deletingSupplier) return
+    await deleteSupplier(deletingSupplier.id)
+    setDeletingSupplier(null)
   }
 
   // ── Marcas ─────────────────────────────────────────────────────────────────
@@ -885,6 +937,130 @@ export default function SettingsPage() {
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={handleDeleteBrand}
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Proveedores */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Truck className="h-5 w-5" />
+                  Proveedores
+                </CardTitle>
+                <CardDescription>Administrar proveedores de productos</CardDescription>
+              </div>
+              <Dialog open={supplierDialogOpen} onOpenChange={(open) => { setSupplierDialogOpen(open); if (!open) resetSupplierForm() }}>
+                <DialogTrigger asChild>
+                  <Button><Plus className="mr-2 h-4 w-4" />Agregar Proveedor</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{editingSupplier ? "Editar Proveedor" : "Nuevo Proveedor"}</DialogTitle>
+                    <DialogDescription>
+                      {editingSupplier ? "Modificá los datos del proveedor" : "Completá los datos para crear un nuevo proveedor"}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label>Nombre <span className="text-destructive">*</span></Label>
+                      <Input
+                        value={supplierDialogName}
+                        onChange={(e) => setSupplierDialogName(e.target.value)}
+                        placeholder="Nombre del proveedor"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Descripción / Contacto <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
+                      <Textarea
+                        value={supplierDialogContact}
+                        onChange={(e) => setSupplierDialogContact(e.target.value)}
+                        placeholder="Ej: contacto@proveedor.com · +54 11 1234-5678"
+                        rows={2}
+                      />
+                    </div>
+                    {editingSupplier && (
+                      <div className="flex items-center justify-between">
+                        <Label>Activo</Label>
+                        <Switch checked={supplierDialogActive} onCheckedChange={setSupplierDialogActive} />
+                      </div>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => { setSupplierDialogOpen(false); resetSupplierForm() }}>Cancelar</Button>
+                    <Button onClick={handleSaveSupplier} disabled={!supplierDialogName.trim() || savingSupplier}>
+                      {savingSupplier ? "Guardando..." : editingSupplier ? "Guardar Cambios" : "Crear Proveedor"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {suppliers.map(supplier => {
+                  const productCount = products.filter(p => p.supplier_id === supplier.id).length
+                  return (
+                    <div
+                      key={supplier.id}
+                      className="flex items-center justify-between rounded-lg border border-border p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`h-3 w-3 shrink-0 rounded-full ${supplier.is_active !== false ? "bg-green-500" : "bg-muted"}`} />
+                        <div>
+                          <p className="font-medium">{supplier.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {productCount === 0 ? "Sin productos" : `${productCount} producto${productCount !== 1 ? "s" : ""}`}
+                            {supplier.contact && ` · ${supplier.contact}`}
+                            {supplier.is_active === false && " · Inactivo"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditSupplier(supplier)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          disabled={productCount > 0}
+                          title={productCount > 0
+                            ? `No se puede eliminar: ${productCount} producto${productCount !== 1 ? "s" : ""} lo usan. Desactivalo en cambio.`
+                            : "Eliminar proveedor"}
+                          onClick={() => setDeletingSupplier(supplier)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+                {suppliers.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No hay proveedores cargados.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Confirmar eliminar proveedor */}
+          <AlertDialog open={!!deletingSupplier} onOpenChange={(open) => !open && setDeletingSupplier(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar proveedor?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vas a eliminar <strong>{deletingSupplier?.name}</strong>. Esta acción no se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleDeleteSupplier}
                 >
                   Eliminar
                 </AlertDialogAction>

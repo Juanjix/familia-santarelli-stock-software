@@ -58,6 +58,7 @@ function generateBarcode(): string {
 
 function ProductsPageInner() {
   const { products, suppliers, categories, brands, categoryAttributes, warehouses, addProduct, updateProduct, deleteProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
+
   const searchParams = useSearchParams()
   const [search, setSearch] = useState(() => searchParams.get("q") || "")
   const [category, setCategory] = useState("Todos")
@@ -116,6 +117,8 @@ function ProductsPageInner() {
   const [categoryCreateError, setCategoryCreateError] = useState<string | null>(null)
   const [creatingBrand, setCreatingBrand] = useState(false)
   const [brandCreateError, setBrandCreateError] = useState<string | null>(null)
+  const [creatingSupplier, setCreatingSupplier] = useState(false)
+  const [supplierCreateError, setSupplierCreateError] = useState<string | null>(null)
 
   // Categoría "efectiva": si el usuario está creando una categoría nueva,
   // usamos el texto ingresado como categoría válida (aunque todavía no exista
@@ -204,6 +207,7 @@ function ProductsPageInner() {
     setFormAttributes({})
     setCategoryCreateError(null)
     setBrandCreateError(null)
+    setSupplierCreateError(null)
     setEditingProduct(null)
   }
 
@@ -237,6 +241,22 @@ function ProductsPageInner() {
       setBrandCreateError("No se pudo crear. ¿Ya existe una marca con ese nombre?")
     }
     setCreatingBrand(false)
+  }
+
+  const handleCreateSupplier = async () => {
+    const name = newSupplierName.trim()
+    if (!name || creatingSupplier) return
+    setCreatingSupplier(true)
+    setSupplierCreateError(null)
+    const result = await addSupplier({ name })
+    if (result) {
+      setFormSupplierId(result.id)
+      setShowNewSupplierInput(false)
+      setNewSupplierName("")
+    } else {
+      setSupplierCreateError("No se pudo crear. ¿Ya existe un proveedor con ese nombre?")
+    }
+    setCreatingSupplier(false)
   }
 
   const openCreateDialog = () => {
@@ -281,15 +301,8 @@ function ProductsPageInner() {
     
     setSaving(true)
     try {
-      // Handle new supplier creation if needed
-      let supplierId = formSupplierId || null
-      if (showNewSupplierInput && newSupplierName.trim()) {
-        const newSupplier = await addSupplier({ name: newSupplierName.trim() })
-        if (newSupplier) {
-          supplierId = newSupplier.id
-        }
-      }
-      
+      const supplierId = formSupplierId || null
+
       // Handle new category creation if needed
       let categoryId = effectiveCategory || null
       if (showNewCategoryInput && newCategoryName.trim()) {
@@ -869,7 +882,7 @@ function ProductsPageInner() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Sin proveedor</SelectItem>
-                          {suppliers.map(supplier => (
+                          {suppliers.filter(s => s.is_active !== false).map(supplier => (
                             <SelectItem key={supplier.id} value={supplier.id}>
                               {supplier.name}
                             </SelectItem>
@@ -881,29 +894,44 @@ function ProductsPageInner() {
                         variant="outline"
                         size="sm"
                         onClick={() => setShowNewSupplierInput(true)}
+                        className="px-2"
                       >
                         Nuevo
                       </Button>
                     </div>
                   ) : (
-                    <div className="flex gap-2">
-                      <Input
-                        value={newSupplierName}
-                        onChange={(e) => setNewSupplierName(e.target.value)}
-                        placeholder="Nombre del proveedor"
-                        className="flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setShowNewSupplierInput(false)
-                          setNewSupplierName("")
-                        }}
-                      >
-                        Cancelar
-                      </Button>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-1.5">
+                        <Input
+                          autoFocus
+                          value={newSupplierName}
+                          onChange={(e) => { setNewSupplierName(e.target.value); setSupplierCreateError(null) }}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateSupplier() } }}
+                          placeholder="Nombre del proveedor"
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => { setShowNewSupplierInput(false); setNewSupplierName(""); setSupplierCreateError(null) }}
+                          className="px-2"
+                        >
+                          ✕
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleCreateSupplier}
+                          disabled={!newSupplierName.trim() || creatingSupplier}
+                          className="px-3"
+                        >
+                          {creatingSupplier ? "..." : "Crear"}
+                        </Button>
+                      </div>
+                      {supplierCreateError && (
+                        <p className="text-xs text-destructive">{supplierCreateError}</p>
+                      )}
                     </div>
                   )}
                 </div>

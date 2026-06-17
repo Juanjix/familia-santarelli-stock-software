@@ -84,6 +84,8 @@ interface InventoryContextType {
   updateWarehouse: (id: string, updates: Partial<Warehouse>) => Promise<void>
   deleteWarehouse: (id: string) => Promise<void>
   addSupplier: (supplier: Partial<Supplier>) => Promise<Supplier | null>
+  updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>
+  deleteSupplier: (id: string) => Promise<void>
   addCategory: (category: Partial<Category>) => Promise<Category | null>
   updateCategory: (id: string, updates: Partial<Category>) => Promise<void>
   deleteCategory: (id: string) => Promise<void>
@@ -418,6 +420,25 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return data
   }, [supabase])
 
+  const updateSupplier = useCallback(async (id: string, updates: Partial<Supplier>) => {
+    const { error } = await supabase
+      .from("suppliers")
+      .update({
+        ...(updates.name !== undefined && { name: updates.name }),
+        ...(updates.contact !== undefined && { contact: updates.contact }),
+        ...(updates.is_active !== undefined && { is_active: updates.is_active }),
+      })
+      .eq("id", id)
+    if (error) { console.error("Error updating supplier:", error); return }
+    setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+  }, [supabase])
+
+  const deleteSupplier = useCallback(async (id: string) => {
+    const { error } = await supabase.from("suppliers").delete().eq("id", id)
+    if (error) { console.error("Error deleting supplier:", error); return }
+    setSuppliers(prev => prev.filter(s => s.id !== id))
+  }, [supabase])
+
   const addCoupon = useCallback(async (coupon: Partial<Coupon>) => {
     const { data, error } = await supabase
       .from("coupons")
@@ -650,6 +671,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       updateWarehouse,
       deleteWarehouse,
       addSupplier,
+      updateSupplier,
+      deleteSupplier,
       addCategory,
       updateCategory,
       deleteCategory,
