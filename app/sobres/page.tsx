@@ -158,7 +158,9 @@ function printEnvelope(envelope: Envelope) {
     <div class="work-label">Trabajo solicitado</div>
     <div class="work-text">${envelope.work_description}</div>
     <div class="divider"></div>
-    <div class="row"><span class="label">Presupuesto</span><span class="value">${quoteLabel}${envelope.quote_amount ? ` · $${envelope.quote_amount.toLocaleString("es-AR")}` : ""}</span></div>
+    <div class="row"><span class="label">Presupuesto</span><span class="value">${quoteLabel}</span></div>
+    ${envelope.quote_amount != null ? `<div class="row"><span class="label">Monto</span><span class="value">$${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></div>` : ""}
+    ${envelope.quote_notes ? `<div class="row"><span class="label">Detalle</span><span class="value">${envelope.quote_notes}</span></div>` : ""}
     <div class="row"><span class="label">Local receptor</span><span class="value">${warehouse}</span></div>
     <div class="row"><span class="label">Fecha recepción</span><span class="value">${formatDate(envelope.received_at)}</span></div>
     ${envelope.estimated_ready_date ? `<div class="row"><span class="label">Fecha estimada</span><span class="value">${formatDate(envelope.estimated_ready_date)}</span></div>` : ""}
@@ -374,6 +376,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
         work_description: form.workDescription.trim(),
         quote_status: form.quoteStatus,
         quote_amount: null,
+        quote_notes: null,
         quote_informed_at: null,
         jeweler_id: form.jewelerId || null,
         estimated_ready_date: form.estimatedReadyDate || null,
@@ -676,6 +679,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   const [editJewelerId, setEditJewelerId] = useState("")
   const [editQuoteStatus, setEditQuoteStatus] = useState<QuoteStatus>("not_required")
   const [editQuoteAmount, setEditQuoteAmount] = useState("")
+  const [editQuoteNotes, setEditQuoteNotes] = useState("")
   const [editEstimatedReadyDate, setEditEstimatedReadyDate] = useState("")
   const [editInternalNotes, setEditInternalNotes] = useState("")
   const [saving, setSaving] = useState(false)
@@ -700,6 +704,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       setEditJewelerId(envelope.jeweler_id || "")
       setEditQuoteStatus(envelope.quote_status)
       setEditQuoteAmount(envelope.quote_amount?.toString() || "")
+      setEditQuoteNotes(envelope.quote_notes || "")
       setEditEstimatedReadyDate(envelope.estimated_ready_date || "")
       setEditInternalNotes(envelope.internal_notes || "")
     }
@@ -713,21 +718,33 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   const handleSaveEdits = async () => {
     setSaving(true)
     try {
+      const parsedAmount = editQuoteAmount ? parseFloat(editQuoteAmount) : null
+
+      // Auto-transition: if pending and monto entered → informed
+      let resolvedStatus = editQuoteStatus
+      let resolvedInformedAt: string | null = envelope.quote_informed_at
+      if (
+        editQuoteStatus === "pending" &&
+        parsedAmount !== null &&
+        envelope.quote_status !== "informed"
+      ) {
+        resolvedStatus = "informed"
+        resolvedInformedAt = new Date().toISOString()
+      } else if (editQuoteStatus === "informed" && envelope.quote_status !== "informed") {
+        resolvedInformedAt = new Date().toISOString()
+      }
+
       const envelopeUpdates: Partial<Envelope> = {
         purchased_at_store: editPurchasedAtStore,
         purchase_date: editPurchaseDate || null,
         jeweler_id: editJewelerId || null,
-        quote_status: editQuoteStatus,
-        quote_amount: editQuoteAmount ? parseFloat(editQuoteAmount) : null,
+        quote_status: resolvedStatus,
+        quote_amount: parsedAmount,
+        quote_notes: editQuoteNotes.trim() || null,
+        quote_informed_at: resolvedInformedAt,
         estimated_ready_date: editEstimatedReadyDate || null,
         internal_notes: editInternalNotes.trim() || null,
-        // quote_informed_at: set when moving to 'informed'
-        ...(editQuoteStatus === "informed" && envelope.quote_status !== "informed"
-          ? { quote_informed_at: new Date().toISOString() }
-          : {}),
       }
-      // Customer-level updates are handled separately via updateCustomer
-      // For now pass through envelope updates; phone/address edits require a separate call
       await onUpdated(envelope.id, envelopeUpdates)
       setEditing(false)
     } finally {
@@ -854,11 +871,20 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground text-xs">Presupuesto</span>
-                    <span className="text-sm font-medium">
-                      {QUOTE_STATUS_LABELS[envelope.quote_status]}
-                      {envelope.quote_amount ? ` · $${envelope.quote_amount.toLocaleString("es-AR")}` : ""}
-                    </span>
+                    <span className="text-sm font-medium">{QUOTE_STATUS_LABELS[envelope.quote_status]}</span>
                   </div>
+                  {envelope.quote_amount != null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground text-xs">Monto</span>
+                      <span className="text-sm font-semibold">${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  {envelope.quote_notes && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground text-xs shrink-0">Detalle</span>
+                      <span className="text-sm text-right">{envelope.quote_notes}</span>
+                    </div>
+                  )}
                   {envelope.estimated_ready_date && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground text-xs">Fecha estimada</span>
@@ -890,11 +916,23 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                     </Select>
                   </div>
                   {editQuoteStatus !== "not_required" && (
-                    <div className="grid gap-1">
-                      <Label className="text-xs">Monto del presupuesto <span className="text-muted-foreground">(Opcional)</span></Label>
-                      <Input type="number" value={editQuoteAmount} onChange={e => setEditQuoteAmount(e.target.value)}
-                        className="h-8 text-sm" placeholder="0.00" min="0" step="0.01" />
-                    </div>
+                    <>
+                      <div className="grid gap-1">
+                        <Label className="text-xs">
+                          Monto
+                          {editQuoteStatus === "pending" && editQuoteAmount
+                            ? <span className="ml-1 text-blue-600 dark:text-blue-400 font-normal">→ se marcará como Informado al guardar</span>
+                            : <span className="text-muted-foreground font-normal"> (Opcional)</span>}
+                        </Label>
+                        <Input type="number" value={editQuoteAmount} onChange={e => setEditQuoteAmount(e.target.value)}
+                          className="h-8 text-sm" placeholder="25000" min="0" step="0.01" />
+                      </div>
+                      <div className="grid gap-1">
+                        <Label className="text-xs">Detalle del presupuesto <span className="text-muted-foreground font-normal">(Opcional)</span></Label>
+                        <Input value={editQuoteNotes} onChange={e => setEditQuoteNotes(e.target.value)}
+                          className="h-8 text-sm" placeholder="Ej: Cambio de cierre + soldadura" />
+                      </div>
+                    </>
                   )}
                   <div className="grid gap-1">
                     <Label className="text-xs">Fecha estimada de entrega</Label>

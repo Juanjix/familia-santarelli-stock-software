@@ -55,6 +55,7 @@ export interface Envelope {
   work_description: string
   quote_status: QuoteStatus
   quote_amount: number | null
+  quote_notes: string | null
   quote_informed_at: string | null
   quote_approved_at: string | null
   jeweler_id: string | null
