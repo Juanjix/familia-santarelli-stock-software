@@ -89,6 +89,57 @@ const NEXT_STATUSES: Partial<Record<EnvelopeStatus, EnvelopeStatus[]>> = {
   ready: ["delivered"],
 }
 
+type ActiveAction =
+  | null
+  | "send_to_jeweler"
+  | "receive_from_jeweler"
+  | "transfer"
+  | "request_quote"
+  | "inform_quote"
+  | "approve_quote"
+  | "reject_quote"
+  | "deliver"
+  | "cancel_envelope"
+
+const ACTION_CONFIG: Record<
+  Exclude<ActiveAction, null>,
+  { label: string; icon: string; variant: "default" | "outline" | "destructive" }
+> = {
+  send_to_jeweler:      { label: "Enviar a Joyero",       icon: "🔧", variant: "default" },
+  receive_from_jeweler: { label: "Recibir de Joyero",     icon: "📬", variant: "default" },
+  transfer:             { label: "Transferir",             icon: "🏪", variant: "outline" },
+  request_quote:        { label: "Solicitar presupuesto",  icon: "💬", variant: "outline" },
+  inform_quote:         { label: "Informar presupuesto",   icon: "💰", variant: "default" },
+  approve_quote:        { label: "Aprobar presupuesto",    icon: "✅", variant: "default" },
+  reject_quote:         { label: "Rechazar presupuesto",   icon: "🚫", variant: "outline" },
+  deliver:              { label: "Entregar al cliente",    icon: "🤝", variant: "default" },
+  cancel_envelope:      { label: "Cancelar sobre",         icon: "❌", variant: "destructive" },
+}
+
+function getAvailableActions(envelope: Envelope): Exclude<ActiveAction, null>[] {
+  const a: Exclude<ActiveAction, null>[] = []
+  switch (envelope.status) {
+    case "received":
+      a.push("request_quote", "send_to_jeweler", "transfer", "cancel_envelope")
+      break
+    case "quote_pending":
+      if (envelope.quote_status === "pending") a.push("inform_quote")
+      if (envelope.quote_status === "informed") a.push("approve_quote", "reject_quote")
+      a.push("transfer", "cancel_envelope")
+      break
+    case "quote_approved":
+      a.push("send_to_jeweler", "transfer", "cancel_envelope")
+      break
+    case "in_workshop":
+      a.push("receive_from_jeweler", "transfer", "cancel_envelope")
+      break
+    case "ready":
+      a.push("deliver", "transfer")
+      break
+  }
+  return a
+}
+
 const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   not_required: "No requerido",
   pending: "Pendiente",
@@ -745,7 +796,7 @@ interface EnvelopeDetailDialogProps {
 }
 
 function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: EnvelopeDetailDialogProps) {
-  const { jewelers, fetchEnvelopeEvents } = useInventory()
+  const { jewelers, warehouses, fetchEnvelopeEvents } = useInventory()
   const [events, setEvents] = useState<EnvelopeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
 
@@ -757,26 +808,36 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   const [editMaterialDetail, setEditMaterialDetail] = useState("")
   const [editPurchasedAtStore, setEditPurchasedAtStore] = useState(false)
   const [editPurchaseDate, setEditPurchaseDate] = useState("")
-  const [editJewelerId, setEditJewelerId] = useState("")
-  const [editQuoteStatus, setEditQuoteStatus] = useState<QuoteStatus>("not_required")
-  const [editQuoteAmount, setEditQuoteAmount] = useState("")
-  const [editQuoteNotes, setEditQuoteNotes] = useState("")
   const [editEstimatedReadyDate, setEditEstimatedReadyDate] = useState("")
   const [editInternalNotes, setEditInternalNotes] = useState("")
   const [saving, setSaving] = useState(false)
 
-  // Status change
-  const [changingStatus, setChangingStatus] = useState(false)
-  const [targetStatus, setTargetStatus] = useState<EnvelopeStatus | null>(null)
-  const [statusNote, setStatusNote] = useState("")
-  const [savingStatus, setSavingStatus] = useState(false)
+  // Action state
+  const [activeAction, setActiveAction] = useState<ActiveAction>(null)
+  const [actionJewelerId, setActionJewelerId] = useState("")
+  const [actionWarehouseId, setActionWarehouseId] = useState("")
+  const [actionQuoteAmount, setActionQuoteAmount] = useState("")
+  const [actionQuoteNotes, setActionQuoteNotes] = useState("")
+  const [actionDeliveredBy, setActionDeliveredBy] = useState("")
+  const [actionDeliveryNotes, setActionDeliveryNotes] = useState("")
+  const [actionNote, setActionNote] = useState("")
+  const [actionSaving, setActionSaving] = useState(false)
+
+  const resetActionForm = () => {
+    setActionJewelerId("")
+    setActionWarehouseId("")
+    setActionQuoteAmount("")
+    setActionQuoteNotes("")
+    setActionDeliveredBy("")
+    setActionDeliveryNotes("")
+    setActionNote("")
+  }
 
   useEffect(() => {
     if (envelope) {
       setEditing(false)
-      setChangingStatus(false)
-      setTargetStatus(null)
-      setStatusNote("")
+      setActiveAction(null)
+      resetActionForm()
       // Load events
       setEventsLoading(true)
       fetchEnvelopeEvents(envelope.id).then(data => { setEvents(data); setEventsLoading(false) })
@@ -788,10 +849,6 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       setEditMaterialDetail(customDetail)
       setEditPurchasedAtStore(envelope.purchased_at_store)
       setEditPurchaseDate(envelope.purchase_date || "")
-      setEditJewelerId(envelope.jeweler_id || "")
-      setEditQuoteStatus(envelope.quote_status)
-      setEditQuoteAmount(envelope.quote_amount?.toString() || "")
-      setEditQuoteNotes(envelope.quote_notes || "")
       setEditEstimatedReadyDate(envelope.estimated_ready_date || "")
       setEditInternalNotes(envelope.internal_notes || "")
     }
@@ -800,60 +857,92 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   if (!envelope) return null
 
   const c = envelope.customer
-  const nextStatuses = NEXT_STATUSES[envelope.status] || []
+  const availableActions = getAvailableActions(envelope)
 
   const handleSaveEdits = async () => {
     setSaving(true)
     try {
-      const parsedAmount = editQuoteAmount ? parseFloat(editQuoteAmount) : null
-
-      // Auto-transition: if pending and monto entered → informed
-      let resolvedStatus = editQuoteStatus
-      let resolvedInformedAt: string | null = envelope.quote_informed_at
-      if (
-        editQuoteStatus === "pending" &&
-        parsedAmount !== null &&
-        envelope.quote_status !== "informed"
-      ) {
-        resolvedStatus = "informed"
-        resolvedInformedAt = new Date().toISOString()
-      } else if (editQuoteStatus === "informed" && envelope.quote_status !== "informed") {
-        resolvedInformedAt = new Date().toISOString()
-      }
-
-      const envelopeUpdates: Partial<Envelope> = {
+      await onUpdated(envelope.id, {
         product_material: editMaterial || null,
         product_material_detail: editMaterial === "OTROS" ? editMaterialDetail.trim() || null : null,
         purchased_at_store: editPurchasedAtStore,
         purchase_date: editPurchaseDate || null,
-        jeweler_id: editJewelerId || null,
-        quote_status: resolvedStatus,
-        quote_amount: parsedAmount,
-        quote_notes: editQuoteNotes.trim() || null,
-        quote_informed_at: resolvedInformedAt,
         estimated_ready_date: editEstimatedReadyDate || null,
         internal_notes: editInternalNotes.trim() || null,
-      }
-      await onUpdated(envelope.id, envelopeUpdates)
+      })
       setEditing(false)
-      // Reload events to reflect changes
       fetchEnvelopeEvents(envelope.id).then(setEvents)
     } finally {
       setSaving(false)
     }
   }
 
-  const handleStatusChange = async () => {
-    if (!targetStatus) return
-    setSavingStatus(true)
+  const handleAction = async () => {
+    setActionSaving(true)
     try {
-      await onUpdated(envelope.id, { status: targetStatus }, statusNote || undefined)
-      setChangingStatus(false)
-      setTargetStatus(null)
-      setStatusNote("")
+      switch (activeAction) {
+        case "request_quote":
+          await onUpdated(envelope.id, { status: "quote_pending", quote_status: "pending" })
+          break
+        case "send_to_jeweler":
+          await onUpdated(envelope.id, {
+            status: "in_workshop",
+            jeweler_id: actionJewelerId || null,
+          })
+          break
+        case "receive_from_jeweler":
+          await onUpdated(envelope.id, { status: "ready" })
+          break
+        case "transfer":
+          await onUpdated(envelope.id, { current_warehouse_id: actionWarehouseId })
+          break
+        case "inform_quote":
+          await onUpdated(envelope.id, {
+            quote_status: "informed",
+            quote_amount: actionQuoteAmount ? parseFloat(actionQuoteAmount) : null,
+            quote_notes: actionQuoteNotes.trim() || null,
+            quote_informed_at: new Date().toISOString(),
+          })
+          break
+        case "approve_quote":
+          await onUpdated(envelope.id, {
+            status: "quote_approved",
+            quote_status: "approved",
+            quote_approved_at: new Date().toISOString(),
+          })
+          break
+        case "reject_quote":
+          await onUpdated(
+            envelope.id,
+            { status: "received", quote_status: "rejected" },
+            actionNote.trim() || "Presupuesto rechazado por el cliente"
+          )
+          break
+        case "deliver":
+          await onUpdated(
+            envelope.id,
+            {
+              status: "delivered",
+              delivered_at: new Date().toISOString(),
+              delivered_by: actionDeliveredBy.trim() || null,
+              delivery_notes: actionDeliveryNotes.trim() || null,
+            },
+            actionDeliveredBy.trim() ? `Entregado a ${actionDeliveredBy.trim()}` : undefined
+          )
+          break
+        case "cancel_envelope":
+          await onUpdated(
+            envelope.id,
+            { status: "cancelled" },
+            actionNote.trim() || undefined
+          )
+          break
+      }
+      setActiveAction(null)
+      resetActionForm()
       fetchEnvelopeEvents(envelope.id).then(setEvents)
     } finally {
-      setSavingStatus(false)
+      setActionSaving(false)
     }
   }
 
@@ -984,81 +1073,47 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
             </div>
           </section>
 
-          {/* Campos editables */}
+          {/* Asignación y presupuesto — solo lectura */}
           <section>
             <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Asignación y presupuesto</p>
-            <div className="rounded-lg border border-border p-3 grid gap-2">
+            <div className="rounded-lg border border-border p-3 grid gap-1.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground text-xs">Joyero</span>
+                <span className="text-sm font-medium">{envelope.jeweler?.name || "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground text-xs">Presupuesto</span>
+                <span className="text-sm font-medium">{QUOTE_STATUS_LABELS[envelope.quote_status]}</span>
+              </div>
+              {envelope.quote_amount != null && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground text-xs">Monto</span>
+                  <span className="text-sm font-semibold">${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {envelope.quote_notes && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground text-xs shrink-0">Detalle</span>
+                  <span className="text-sm text-right">{envelope.quote_notes}</span>
+                </div>
+              )}
               {!editing ? (
                 <>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground text-xs">Joyero</span>
-                    <span className="text-sm font-medium">{envelope.jeweler?.name || "—"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground text-xs">Presupuesto</span>
-                    <span className="text-sm font-medium">{QUOTE_STATUS_LABELS[envelope.quote_status]}</span>
-                  </div>
-                  {envelope.quote_amount != null && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground text-xs">Monto</span>
-                      <span className="text-sm font-semibold">${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  )}
-                  {envelope.quote_notes && (
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground text-xs shrink-0">Detalle</span>
-                      <span className="text-sm text-right">{envelope.quote_notes}</span>
-                    </div>
-                  )}
                   {envelope.estimated_ready_date && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground text-xs">Fecha estimada</span>
                       <span className="text-sm font-medium">{formatDate(envelope.estimated_ready_date)}</span>
                     </div>
                   )}
+                  {envelope.internal_notes && (
+                    <div className="flex justify-between gap-4 pt-0.5 border-t border-border mt-0.5">
+                      <span className="text-muted-foreground text-xs shrink-0">Notas internas</span>
+                      <span className="text-sm text-right text-muted-foreground">{envelope.internal_notes}</span>
+                    </div>
+                  )}
                 </>
               ) : (
-                <div className="grid gap-3">
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Joyero</Label>
-                    <Select value={editJewelerId || "none"} onValueChange={(v) => setEditJewelerId(v === "none" ? "" : v)}>
-                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sin asignar</SelectItem>
-                        {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Estado del presupuesto</Label>
-                    <Select value={editQuoteStatus} onValueChange={(v) => setEditQuoteStatus(v as QuoteStatus)}>
-                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(QUOTE_STATUS_LABELS) as QuoteStatus[]).map(qs => (
-                          <SelectItem key={qs} value={qs}>{QUOTE_STATUS_LABELS[qs]}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {editQuoteStatus !== "not_required" && (
-                    <>
-                      <div className="grid gap-1">
-                        <Label className="text-xs">
-                          Monto
-                          {editQuoteStatus === "pending" && editQuoteAmount
-                            ? <span className="ml-1 text-blue-600 dark:text-blue-400 font-normal">→ se marcará como Informado al guardar</span>
-                            : <span className="text-muted-foreground font-normal"> (Opcional)</span>}
-                        </Label>
-                        <Input type="number" value={editQuoteAmount} onChange={e => setEditQuoteAmount(e.target.value)}
-                          className="h-8 text-sm" placeholder="25000" min="0" step="0.01" />
-                      </div>
-                      <div className="grid gap-1">
-                        <Label className="text-xs">Detalle del presupuesto <span className="text-muted-foreground font-normal">(Opcional)</span></Label>
-                        <Input value={editQuoteNotes} onChange={e => setEditQuoteNotes(e.target.value)}
-                          className="h-8 text-sm" placeholder="Ej: Cambio de cierre + soldadura" />
-                      </div>
-                    </>
-                  )}
+                <div className="grid gap-2 pt-1 border-t border-border mt-0.5">
                   <div className="grid gap-1">
                     <Label className="text-xs">Fecha estimada de entrega</Label>
                     <Input type="date" value={editEstimatedReadyDate} onChange={e => setEditEstimatedReadyDate(e.target.value)} className="h-8 text-sm" />
@@ -1072,27 +1127,18 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
             </div>
           </section>
 
-          {!editing && envelope.internal_notes && (
-            <section>
-              <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Notas internas</p>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground whitespace-pre-wrap text-sm">{envelope.internal_notes}</p>
-              </div>
-            </section>
-          )}
-
-          {/* Acciones de edición */}
-          {!changingStatus && (
+          {/* Corrección de datos */}
+          {!activeAction && (
             <div className="flex gap-2">
               {!editing ? (
-                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editar
+                <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Corregir datos
                 </Button>
               ) : (
                 <>
                   <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancelar</Button>
                   <Button size="sm" onClick={handleSaveEdits} disabled={saving}>
-                    {saving ? "Guardando..." : "Guardar cambios"}
+                    {saving ? "Guardando..." : "Guardar"}
                   </Button>
                 </>
               )}
@@ -1133,33 +1179,117 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
             </section>
           )}
 
-          {/* Cambio de estado */}
-          {!editing && nextStatuses.length > 0 && (
+          {/* Acciones operativas */}
+          {!editing && availableActions.length > 0 && (
             <section>
               <Separator className="my-1" />
-              {!changingStatus ? (
-                <Button variant="outline" size="sm" onClick={() => setChangingStatus(true)}>
-                  <Clock className="mr-1.5 h-4 w-4" /> Cambiar estado
-                </Button>
+              <p className="text-xs font-semibold uppercase text-muted-foreground mb-2 mt-1">Acciones</p>
+              {!activeAction ? (
+                <div className="flex flex-wrap gap-2">
+                  {availableActions.map(action => (
+                    <Button
+                      key={action}
+                      size="sm"
+                      variant={ACTION_CONFIG[action].variant}
+                      onClick={() => { resetActionForm(); setActiveAction(action) }}
+                    >
+                      <span className="mr-1.5">{ACTION_CONFIG[action].icon}</span>
+                      {ACTION_CONFIG[action].label}
+                    </Button>
+                  ))}
+                </div>
               ) : (
-                <div className="grid gap-3">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">Nuevo estado</p>
-                  <div className="flex flex-wrap gap-2">
-                    {nextStatuses.map(s => (
-                      <button key={s} onClick={() => setTargetStatus(s)}
-                        className={`rounded-full px-3 py-1 text-xs font-medium transition-all border ${targetStatus === s ? "ring-2 ring-primary" : ""} ${STATUS_COLORS[s]}`}>
-                        {STATUS_LABELS[s]}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs">Nota <span className="text-muted-foreground">(Opcional)</span></Label>
-                    <Input value={statusNote} onChange={e => setStatusNote(e.target.value)} placeholder="Ej: El cliente aprobó el presupuesto" />
-                  </div>
+                <div className="rounded-lg border border-border bg-muted/30 p-3 grid gap-3">
+                  <p className="text-sm font-semibold">
+                    {ACTION_CONFIG[activeAction].icon} {ACTION_CONFIG[activeAction].label}
+                  </p>
+
+                  {/* Enviar a Joyero */}
+                  {activeAction === "send_to_jeweler" && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Joyero <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
+                      <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sin asignar</SelectItem>
+                          {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Transferir */}
+                  {activeAction === "transfer" && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Destino <span className="text-destructive">*</span></Label>
+                      <Select value={actionWarehouseId || "none"} onValueChange={v => setActionWarehouseId(v === "none" ? "" : v)}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Seleccionar local..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Seleccionar...</SelectItem>
+                          {warehouses
+                            .filter(w => w.is_active && w.id !== envelope.current_warehouse_id)
+                            .map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Informar presupuesto */}
+                  {activeAction === "inform_quote" && (
+                    <>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Monto <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
+                        <Input type="number" value={actionQuoteAmount} onChange={e => setActionQuoteAmount(e.target.value)}
+                          className="h-8 text-sm" placeholder="25000" min="0" step="0.01" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Detalle <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
+                        <Input value={actionQuoteNotes} onChange={e => setActionQuoteNotes(e.target.value)}
+                          className="h-8 text-sm" placeholder="Ej: Cambio de cierre + soldadura" />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Entregar */}
+                  {activeAction === "deliver" && (
+                    <>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Entregado a <span className="text-destructive">*</span></Label>
+                        <Input value={actionDeliveredBy} onChange={e => setActionDeliveredBy(e.target.value)}
+                          className="h-8 text-sm" placeholder="Nombre y apellido" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Observaciones <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
+                        <Input value={actionDeliveryNotes} onChange={e => setActionDeliveryNotes(e.target.value)}
+                          className="h-8 text-sm" placeholder="Ej: Retirado con DNI 12345678" />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Cancelar / Rechazar presupuesto */}
+                  {(activeAction === "cancel_envelope" || activeAction === "reject_quote") && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Motivo <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
+                      <Input value={actionNote} onChange={e => setActionNote(e.target.value)}
+                        className="h-8 text-sm"
+                        placeholder={activeAction === "reject_quote" ? "Ej: El cliente no acepta el precio" : "Ej: El cliente desistió"} />
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { setChangingStatus(false); setTargetStatus(null) }}>Cancelar</Button>
-                    <Button size="sm" disabled={!targetStatus || savingStatus} onClick={handleStatusChange}>
-                      {savingStatus ? "Guardando..." : "Confirmar"}
+                    <Button variant="outline" size="sm" onClick={() => { setActiveAction(null); resetActionForm() }}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={
+                        actionSaving ||
+                        (activeAction === "transfer" && !actionWarehouseId) ||
+                        (activeAction === "deliver" && !actionDeliveredBy.trim())
+                      }
+                      onClick={handleAction}
+                    >
+                      {actionSaving ? "Guardando..." : "Confirmar"}
                     </Button>
                   </div>
                 </div>
