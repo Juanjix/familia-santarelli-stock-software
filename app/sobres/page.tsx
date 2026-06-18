@@ -111,6 +111,31 @@ const CONDITION_LABELS: Record<string, string> = {
   regular: "Regular",
 }
 
+const MATERIAL_OPTIONS = ["ORO", "PLATA", "COBRE", "OTROS"] as const
+type MaterialOption = typeof MATERIAL_OPTIONS[number]
+const MATERIAL_LABELS: Record<MaterialOption, string> = {
+  ORO: "Oro", PLATA: "Plata", COBRE: "Cobre", OTROS: "Otros",
+}
+
+// Devuelve etiqueta legible para el material, con retrocompat para texto libre legado
+function getMaterialDisplay(material: string | null, detail: string | null): string {
+  if (!material) return "—"
+  const known = MATERIAL_LABELS[material as MaterialOption]
+  if (known) return material === "OTROS" && detail ? `Otros (${detail})` : known
+  // Valor legado (texto libre pre-migración): mostrar como "Otros (valor)"
+  return `Otros (${material})`
+}
+
+// Para pre-llenar el selector en modo edición a partir de un valor legado
+function parseMaterialForEdit(material: string | null, detail: string | null): { option: string; customDetail: string } {
+  if (!material) return { option: "", customDetail: "" }
+  if (MATERIAL_LABELS[material as MaterialOption]) {
+    return { option: material, customDetail: detail || "" }
+  }
+  // Legado: mapear texto libre → OTROS con el valor como detalle
+  return { option: "OTROS", customDetail: material }
+}
+
 function StatusBadge({ status }: { status: EnvelopeStatus }) {
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status]}`}>
@@ -151,7 +176,7 @@ function printEnvelope(envelope: Envelope) {
     <div class="row"><span class="label">DNI</span><span class="value">${c?.dni || "—"}</span></div>
     <div class="row"><span class="label">Domicilio</span><span class="value">${c?.address || "—"}</span></div>
     <div class="divider"></div>
-    <div class="row"><span class="label">Artículo</span><span class="value">${type}${subtype ? ` — ${subtype}` : ""}${envelope.product_material ? ` · ${envelope.product_material}` : ""}</span></div>
+    <div class="row"><span class="label">Artículo</span><span class="value">${type}${subtype ? ` — ${subtype}` : ""}${envelope.product_material ? ` · ${getMaterialDisplay(envelope.product_material, envelope.product_material_detail)}` : ""}</span></div>
     <div class="row"><span class="label">Estado</span><span class="value">${condition}</span></div>
     ${envelope.product_condition_notes ? `<div class="row"><span class="label">Obs. estado</span><span class="value">${envelope.product_condition_notes}</span></div>` : ""}
     <div class="divider"></div>
@@ -258,6 +283,7 @@ interface WizardState {
   productType: "jewelry" | "watch"
   productSubtypeId: string
   productMaterial: string
+  productMaterialDetail: string
   productCondition: "very_good" | "good" | "regular"
   productConditionNotes: string
   purchasedAtStore: boolean
@@ -277,6 +303,7 @@ const defaultWizard: WizardState = {
   productType: "jewelry",
   productSubtypeId: "",
   productMaterial: "",
+  productMaterialDetail: "",
   productCondition: "good",
   productConditionNotes: "",
   purchasedAtStore: false,
@@ -368,7 +395,8 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
         received_warehouse_id: form.warehouseId,
         product_type: form.productType,
         product_subtype_id: form.productSubtypeId || null,
-        product_material: form.productMaterial.trim() || null,
+        product_material: form.productMaterial || null,
+        product_material_detail: form.productMaterial === "OTROS" ? form.productMaterialDetail.trim() || null : null,
         product_condition: form.productCondition,
         product_condition_notes: form.productConditionNotes.trim() || null,
         purchased_at_store: form.purchasedAtStore,
@@ -512,7 +540,21 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
 
             <div className="grid gap-1.5">
               <Label>Material <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-              <Input value={form.productMaterial} onChange={e => set("productMaterial", e.target.value)} placeholder="Ej: Oro 18k, Plata 925" />
+              <Select value={form.productMaterial || "none"} onValueChange={(v) => { set("productMaterial", v === "none" ? "" : v); set("productMaterialDetail", "") }}>
+                <SelectTrigger><SelectValue placeholder="Sin especificar" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin especificar</SelectItem>
+                  {MATERIAL_OPTIONS.map(m => <SelectItem key={m} value={m}>{MATERIAL_LABELS[m]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {form.productMaterial === "OTROS" && (
+                <Input
+                  value={form.productMaterialDetail}
+                  onChange={e => set("productMaterialDetail", e.target.value)}
+                  placeholder="Ej: Titanio, Acero, Bronce"
+                  className="mt-1"
+                />
+              )}
             </div>
 
             <div className="grid gap-1.5">
@@ -606,6 +648,12 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
                     ? ` — ${envelopeSubtypes.find(s => s.id === form.productSubtypeId)?.name}` : ""}
                 </span>
               </div>
+              {form.productMaterial && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Material</span>
+                  <span className="font-medium">{getMaterialDisplay(form.productMaterial, form.productMaterialDetail)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Estado artículo</span>
                 <span className="font-medium">{CONDITION_LABELS[form.productCondition]}</span>
@@ -674,6 +722,8 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   const [editing, setEditing] = useState(false)
   const [editPhone, setEditPhone] = useState("")
   const [editAddress, setEditAddress] = useState("")
+  const [editMaterial, setEditMaterial] = useState("")
+  const [editMaterialDetail, setEditMaterialDetail] = useState("")
   const [editPurchasedAtStore, setEditPurchasedAtStore] = useState(false)
   const [editPurchaseDate, setEditPurchaseDate] = useState("")
   const [editJewelerId, setEditJewelerId] = useState("")
@@ -699,6 +749,9 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       // Pre-fill editable fields
       setEditPhone(envelope.customer?.phone || "")
       setEditAddress(envelope.customer?.address || "")
+      const { option, customDetail } = parseMaterialForEdit(envelope.product_material, envelope.product_material_detail)
+      setEditMaterial(option)
+      setEditMaterialDetail(customDetail)
       setEditPurchasedAtStore(envelope.purchased_at_store)
       setEditPurchaseDate(envelope.purchase_date || "")
       setEditJewelerId(envelope.jeweler_id || "")
@@ -735,6 +788,8 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       }
 
       const envelopeUpdates: Partial<Envelope> = {
+        product_material: editMaterial || null,
+        product_material_detail: editMaterial === "OTROS" ? editMaterialDetail.trim() || null : null,
         purchased_at_store: editPurchasedAtStore,
         purchase_date: editPurchaseDate || null,
         jeweler_id: editJewelerId || null,
@@ -825,17 +880,37 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                 {envelope.product_type === "jewelry" ? "Joyería" : "Relojería"}
                 {envelope.product_subtype?.name ? ` — ${envelope.product_subtype.name}` : ""}
               </p>
-              {envelope.product_material && <p className="text-muted-foreground text-xs">Material: {envelope.product_material}</p>}
-              <p className="text-muted-foreground text-xs">Estado: {CONDITION_LABELS[envelope.product_condition]}</p>
-              {envelope.product_condition_notes && <p className="text-muted-foreground text-xs">{envelope.product_condition_notes}</p>}
               {!editing ? (
-                envelope.purchased_at_store && (
-                  <p className="text-green-600 dark:text-green-400 text-xs">
-                    ✓ Comprado en Santarelli{envelope.purchase_date ? ` el ${formatDate(envelope.purchase_date)}` : ""}
-                  </p>
-                )
+                <>
+                  {envelope.product_material && (
+                    <p className="text-muted-foreground text-xs">
+                      Material: {getMaterialDisplay(envelope.product_material, envelope.product_material_detail)}
+                    </p>
+                  )}
+                  <p className="text-muted-foreground text-xs">Estado: {CONDITION_LABELS[envelope.product_condition]}</p>
+                  {envelope.product_condition_notes && <p className="text-muted-foreground text-xs">{envelope.product_condition_notes}</p>}
+                  {envelope.purchased_at_store && (
+                    <p className="text-green-600 dark:text-green-400 text-xs">
+                      ✓ Comprado en Santarelli{envelope.purchase_date ? ` el ${formatDate(envelope.purchase_date)}` : ""}
+                    </p>
+                  )}
+                </>
               ) : (
                 <div className="mt-2 grid gap-2">
+                  <div className="grid gap-1">
+                    <Label className="text-xs">Material</Label>
+                    <Select value={editMaterial || "none"} onValueChange={(v) => { setEditMaterial(v === "none" ? "" : v); setEditMaterialDetail("") }}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sin especificar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin especificar</SelectItem>
+                        {MATERIAL_OPTIONS.map(m => <SelectItem key={m} value={m}>{MATERIAL_LABELS[m]}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {editMaterial === "OTROS" && (
+                      <Input value={editMaterialDetail} onChange={e => setEditMaterialDetail(e.target.value)}
+                        className="h-8 text-sm mt-1" placeholder="Ej: Titanio, Acero, Bronce" />
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     <Switch id="edit-purchased" checked={editPurchasedAtStore} onCheckedChange={setEditPurchasedAtStore} />
                     <Label htmlFor="edit-purchased" className="text-xs">Comprado en Santarelli</Label>
@@ -1138,7 +1213,7 @@ export default function SobresPage() {
                           {e.product_type === "jewelry" ? "Joyería" : "Relojería"}
                           {e.product_subtype?.name ? ` — ${e.product_subtype.name}` : ""}
                         </p>
-                        {e.product_material && <p className="text-xs text-muted-foreground">{e.product_material}</p>}
+                        {e.product_material && <p className="text-xs text-muted-foreground">{getMaterialDisplay(e.product_material, e.product_material_detail)}</p>}
                       </TableCell>
                       <TableCell><StatusBadge status={e.status} /></TableCell>
                       <TableCell>

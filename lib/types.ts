@@ -48,6 +48,7 @@ export interface Envelope {
   product_type: 'jewelry' | 'watch'
   product_subtype_id: string | null
   product_material: string | null
+  product_material_detail: string | null
   product_condition: 'very_good' | 'good' | 'regular'
   product_condition_notes: string | null
   purchased_at_store: boolean
