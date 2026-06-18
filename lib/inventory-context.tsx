@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, QuoteStatus } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, EnvelopeEvent, QuoteStatus } from "./types"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -107,9 +107,10 @@ interface InventoryContextType {
   updateJeweler: (id: string, updates: Partial<Jeweler>) => Promise<void>
   deleteJeweler: (id: string) => Promise<void>
   fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
-  createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at'>) => Promise<Envelope | null>
+  createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id'>) => Promise<Envelope | null>
   updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string) => Promise<void>
   getEnvelopeStatusLog: (envelopeId: string) => Promise<EnvelopeStatusLog[]>
+  fetchEnvelopeEvents: (envelopeId: string) => Promise<EnvelopeEvent[]>
 }
 
 const InventoryContext = createContext<InventoryContextType | null>(null)
@@ -719,8 +720,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return (data || []) as Envelope[]
   }, [supabase])
 
-  const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at'>): Promise<Envelope | null> => {
-    const { data: created, error } = await supabase.from("envelopes").insert({ ...data, number: '' }).select(`
+  const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id'>): Promise<Envelope | null> => {
+    const insertData = { ...data, number: '', current_warehouse_id: data.received_warehouse_id }
+    const { data: created, error } = await supabase.from("envelopes").insert(insertData).select(`
       *,
       customer:customers(id, first_name, last_name, dni, phone, address, created_at, updated_at),
       received_warehouse:warehouses!received_warehouse_id(id, name),
@@ -728,30 +730,100 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       product_subtype:envelope_subtypes(id, name, product_type, is_active, sort_order, created_at)
     `).single()
     if (error) { console.error("Error creating envelope:", error); return null }
-    // Log initial status
-    await supabase.from("envelope_status_log").insert({ envelope_id: created.id, from_status: null, to_status: 'received', changed_by: 'Sistema' })
+    const warehouseName = (created as Envelope).received_warehouse?.name || ''
+    await Promise.all([
+      supabase.from("envelope_status_log").insert({ envelope_id: created.id, from_status: null, to_status: 'received', changed_by: 'Sistema' }),
+      supabase.from("envelope_events").insert({ envelope_id: created.id, event_type: 'envelope_created', title: `Sobre recibido${warehouseName ? ` en ${warehouseName}` : ''}`, detail: null }),
+    ])
     return created as Envelope
   }, [supabase])
 
+  const STATUS_EVENT_TITLES: Record<EnvelopeStatus, string> = {
+    received: 'Sobre recibido',
+    quote_pending: 'Presupuesto solicitado',
+    quote_approved: 'Presupuesto aprobado',
+    in_workshop: 'Ingreso a taller',
+    ready: 'Listo para retirar',
+    delivered: 'Entregado al cliente',
+    cancelled: 'Cancelado',
+  }
+
+  const QUOTE_EVENT_TITLES: Partial<Record<QuoteStatus, string>> = {
+    pending: 'Presupuesto solicitado',
+    informed: 'Presupuesto informado',
+    approved: 'Presupuesto aprobado por el cliente',
+    rejected: 'Presupuesto rechazado por el cliente',
+  }
+
   const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string): Promise<void> => {
-    const { data: current } = await supabase.from("envelopes").select("status").eq("id", id).single()
+    const { data: current } = await supabase
+      .from("envelopes")
+      .select("status, jeweler_id, quote_status, quote_amount, current_warehouse_id")
+      .eq("id", id)
+      .single()
+
     const { error } = await supabase.from("envelopes").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
     if (error) { console.error("Error updating envelope:", error); return }
+
+    const events: { event_type: string; title: string; detail: string | null }[] = []
+
+    // Status change
     if (updates.status && current && updates.status !== current.status) {
+      events.push({ event_type: 'status_changed', title: STATUS_EVENT_TITLES[updates.status], detail: statusNote || null })
       await supabase.from("envelope_status_log").insert({
-        envelope_id: id,
-        from_status: current.status,
-        to_status: updates.status,
-        changed_by: 'Sistema',
-        notes: statusNote || null,
+        envelope_id: id, from_status: current.status, to_status: updates.status,
+        changed_by: 'Sistema', notes: statusNote || null,
       })
     }
-  }, [supabase])
+
+    // Jeweler change
+    if ('jeweler_id' in updates && updates.jeweler_id !== current?.jeweler_id) {
+      if (updates.jeweler_id) {
+        const { data: j } = await supabase.from("jewelers").select("name").eq("id", updates.jeweler_id).single()
+        const isNew = !current?.jeweler_id
+        events.push({
+          event_type: isNew ? 'jeweler_assigned' : 'jeweler_changed',
+          title: isNew ? `Asignado a ${j?.name || 'joyero'}` : `Cambio de joyero: ${j?.name || 'joyero'}`,
+          detail: null,
+        })
+      } else if (current?.jeweler_id) {
+        events.push({ event_type: 'jeweler_removed', title: 'Joyero removido', detail: null })
+      }
+    }
+
+    // Quote status change (when changed directly, not via status flow)
+    if ('quote_status' in updates && updates.quote_status !== current?.quote_status) {
+      const title = QUOTE_EVENT_TITLES[updates.quote_status as QuoteStatus]
+      if (title) {
+        const amount = updates.quote_amount ?? current?.quote_amount
+        const detail = updates.quote_status === 'informed' && amount
+          ? `$${amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+          : null
+        events.push({ event_type: 'quote_updated', title, detail })
+      }
+    }
+
+    // Location transfer (current_warehouse_id changed)
+    if ('current_warehouse_id' in updates && updates.current_warehouse_id && updates.current_warehouse_id !== current?.current_warehouse_id) {
+      const { data: w } = await supabase.from("warehouses").select("name").eq("id", updates.current_warehouse_id).single()
+      events.push({ event_type: 'location_transfer', title: `Transferido a ${w?.name || 'local'}`, detail: null })
+    }
+
+    if (events.length > 0) {
+      await supabase.from("envelope_events").insert(events.map(e => ({ ...e, envelope_id: id })))
+    }
+  }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const getEnvelopeStatusLog = useCallback(async (envelopeId: string): Promise<EnvelopeStatusLog[]> => {
     const { data, error } = await supabase.from("envelope_status_log").select("*").eq("envelope_id", envelopeId).order("created_at")
     if (error) { console.error("Error fetching status log:", error); return [] }
     return (data || []) as EnvelopeStatusLog[]
+  }, [supabase])
+
+  const fetchEnvelopeEvents = useCallback(async (envelopeId: string): Promise<EnvelopeEvent[]> => {
+    const { data, error } = await supabase.from("envelope_events").select("*").eq("envelope_id", envelopeId).order("created_at")
+    if (error) { console.error("Error fetching envelope events:", error); return [] }
+    return (data || []) as EnvelopeEvent[]
   }, [supabase])
 
   return (
@@ -805,6 +877,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       createEnvelope,
       updateEnvelope,
       getEnvelopeStatusLog,
+      fetchEnvelopeEvents,
     }}>
       {children}
     </InventoryContext.Provider>

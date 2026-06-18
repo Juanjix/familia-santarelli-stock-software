@@ -47,7 +47,7 @@ import {
   Printer,
   Pencil,
 } from "lucide-react"
-import type { Envelope, EnvelopeStatus, QuoteStatus } from "@/lib/types"
+import type { Envelope, EnvelopeStatus, EnvelopeEvent, QuoteStatus } from "@/lib/types"
 
 // ── Status helpers ──────────────────────────────────────────────────────────
 
@@ -157,6 +157,35 @@ function QuoteBadge({ status }: { status: QuoteStatus }) {
 function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return "—"
   return new Date(dateStr).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+}
+
+function formatDateTime(dateStr: string) {
+  const d = new Date(dateStr)
+  return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
+    " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+}
+
+// Devuelve la ubicación actual legible del sobre
+function getEnvelopeLocation(envelope: Envelope): string {
+  if (envelope.status === "delivered") return "Entregado"
+  if (envelope.status === "cancelled") return "Cancelado"
+  if (envelope.status === "in_workshop") {
+    return envelope.jeweler?.name ? `Taller — ${envelope.jeweler.name}` : "En taller"
+  }
+  // Usar current_warehouse si difiere, sino received_warehouse
+  const w = (envelope as Envelope & { current_warehouse?: { name: string } }).current_warehouse
+  return envelope.received_warehouse?.name || "—"
+}
+
+// Emoji / icono por tipo de evento
+const EVENT_ICONS: Record<string, string> = {
+  envelope_created: "📦",
+  status_changed: "🔄",
+  jeweler_assigned: "👨‍🔧",
+  jeweler_changed: "🔁",
+  jeweler_removed: "❌",
+  quote_updated: "💰",
+  location_transfer: "🏪",
 }
 
 // ── Print ───────────────────────────────────────────────────────────────────
@@ -716,7 +745,9 @@ interface EnvelopeDetailDialogProps {
 }
 
 function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: EnvelopeDetailDialogProps) {
-  const { jewelers } = useInventory()
+  const { jewelers, fetchEnvelopeEvents } = useInventory()
+  const [events, setEvents] = useState<EnvelopeEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
 
   // Editable fields state
   const [editing, setEditing] = useState(false)
@@ -746,6 +777,9 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       setChangingStatus(false)
       setTargetStatus(null)
       setStatusNote("")
+      // Load events
+      setEventsLoading(true)
+      fetchEnvelopeEvents(envelope.id).then(data => { setEvents(data); setEventsLoading(false) })
       // Pre-fill editable fields
       setEditPhone(envelope.customer?.phone || "")
       setEditAddress(envelope.customer?.address || "")
@@ -802,6 +836,8 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       }
       await onUpdated(envelope.id, envelopeUpdates)
       setEditing(false)
+      // Reload events to reflect changes
+      fetchEnvelopeEvents(envelope.id).then(setEvents)
     } finally {
       setSaving(false)
     }
@@ -815,6 +851,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       setChangingStatus(false)
       setTargetStatus(null)
       setStatusNote("")
+      fetchEnvelopeEvents(envelope.id).then(setEvents)
     } finally {
       setSavingStatus(false)
     }
@@ -830,6 +867,19 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
               <StatusBadge status={envelope.status} />
               <QuoteBadge status={envelope.quote_status} />
             </div>
+          </div>
+          {/* Ubicación actual + último movimiento */}
+          <div className="flex items-center gap-3 pt-1 text-xs text-muted-foreground flex-wrap">
+            <span className="flex items-center gap-1">
+              <span className="text-base leading-none">📍</span>
+              <span className="font-medium text-foreground">{getEnvelopeLocation(envelope)}</span>
+            </span>
+            {events.length > 0 && (
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Último mov.: {formatDateTime(events[events.length - 1].created_at)}
+              </span>
+            )}
           </div>
         </DialogHeader>
 
@@ -1047,6 +1097,40 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                 </>
               )}
             </div>
+          )}
+
+          {/* Trazabilidad */}
+          {!editing && (
+            <section>
+              <Separator className="my-1" />
+              <p className="text-xs font-semibold uppercase text-muted-foreground mb-2 mt-1">Trazabilidad</p>
+              {eventsLoading ? (
+                <p className="text-xs text-muted-foreground">Cargando historial...</p>
+              ) : events.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Sin eventos registrados.</p>
+              ) : (
+                <div className="space-y-0">
+                  {[...events].reverse().map((event, i) => (
+                    <div key={event.id} className="flex gap-3">
+                      <div className="flex flex-col items-center shrink-0">
+                        <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs shrink-0 mt-0.5
+                          ${i === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                          {EVENT_ICONS[event.event_type] || "•"}
+                        </div>
+                        {i < events.length - 1 && <div className="w-px flex-1 bg-border min-h-[12px]" />}
+                      </div>
+                      <div className="pb-3 min-w-0">
+                        <p className={`text-sm font-medium ${i === 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                          {event.title}
+                        </p>
+                        {event.detail && <p className="text-xs text-muted-foreground">{event.detail}</p>}
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">{formatDateTime(event.created_at)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           )}
 
           {/* Cambio de estado */}

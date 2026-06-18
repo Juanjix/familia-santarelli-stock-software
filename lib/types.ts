@@ -49,6 +49,7 @@ export interface Envelope {
   product_subtype_id: string | null
   product_material: string | null
   product_material_detail: string | null
+  current_warehouse_id: string | null
   product_condition: 'very_good' | 'good' | 'regular'
   product_condition_notes: string | null
   purchased_at_store: boolean
@@ -81,6 +82,16 @@ export interface EnvelopeStatusLog {
   to_status: EnvelopeStatus
   changed_by: string
   notes: string | null
+  created_at: string
+}
+
+export interface EnvelopeEvent {
+  id: string
+  envelope_id: string
+  event_type: string
+  title: string
+  detail: string | null
+  created_by: string
   created_at: string
 }
 
