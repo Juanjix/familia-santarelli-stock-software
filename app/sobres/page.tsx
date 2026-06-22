@@ -117,6 +117,9 @@ const ACTION_CONFIG: Record<
   cancel_envelope:      { label: "Cancelar sobre",         icon: "❌", variant: "destructive" },
 }
 
+// Acciones que pertenecen a la gestión de presupuesto (renderizadas en su propia tarjeta)
+const QUOTE_ACTIONS: Exclude<ActiveAction, null>[] = ["request_quote", "inform_quote", "approve_quote", "reject_quote"]
+
 function getAvailableActions(envelope: Envelope): Exclude<ActiveAction, null>[] {
   const a: Exclude<ActiveAction, null>[] = []
   switch (envelope.status) {
@@ -922,6 +925,9 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
 
   const c = envelope.customer
   const availableActions = getAvailableActions(envelope)
+  const quoteActions = availableActions.filter(a => QUOTE_ACTIONS.includes(a))
+  const otherActions = availableActions.filter(a => !QUOTE_ACTIONS.includes(a))
+  const isQuoteAction = !!activeAction && QUOTE_ACTIONS.includes(activeAction)
 
   const handleSaveEdits = async () => {
     setSaving(true)
@@ -1008,6 +1014,94 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
 
   const reversedEvents = [...events].reverse()
 
+  // Formulario inline compartido por la tarjeta de Presupuesto y la de Acciones disponibles
+  const actionFormPanel = activeAction && (
+    <div className="rounded-xl border border-border bg-muted/30 p-4 grid gap-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xl leading-none">{ACTION_CONFIG[activeAction].icon}</span>
+        <p className="font-semibold">{ACTION_CONFIG[activeAction].label}</p>
+      </div>
+
+      {activeAction === "send_to_jeweler" && (
+        <div className="grid gap-1.5">
+          <Label className="text-xs">Joyero <span className="text-muted-foreground">(Opcional)</span></Label>
+          <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
+            <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sin asignar</SelectItem>
+              {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {activeAction === "transfer" && (
+        <div className="grid gap-1.5">
+          <Label className="text-xs">Destino <span className="text-destructive">*</span></Label>
+          <Select value={actionWarehouseId || "none"} onValueChange={v => setActionWarehouseId(v === "none" ? "" : v)}>
+            <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Seleccionar local..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Seleccionar...</SelectItem>
+              {warehouses.filter(w => w.is_active && w.id !== envelope.current_warehouse_id)
+                .map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {activeAction === "inform_quote" && (
+        <>
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Monto <span className="text-muted-foreground">(Opcional)</span></Label>
+            <Input type="number" value={actionQuoteAmount} onChange={e => setActionQuoteAmount(e.target.value)}
+              className="h-9 text-sm" placeholder="25000" min="0" step="0.01" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Detalle <span className="text-muted-foreground">(Opcional)</span></Label>
+            <Input value={actionQuoteNotes} onChange={e => setActionQuoteNotes(e.target.value)}
+              className="h-9 text-sm" placeholder="Ej: Cambio de cierre + soldadura" />
+          </div>
+        </>
+      )}
+
+      {activeAction === "deliver" && (
+        <>
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Entregado a <span className="text-destructive">*</span></Label>
+            <Input value={actionDeliveredBy} onChange={e => setActionDeliveredBy(e.target.value)}
+              className="h-9 text-sm" placeholder="Nombre y apellido" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Observaciones <span className="text-muted-foreground">(Opcional)</span></Label>
+            <Input value={actionDeliveryNotes} onChange={e => setActionDeliveryNotes(e.target.value)}
+              className="h-9 text-sm" placeholder="Ej: Retirado con DNI 12345678" />
+          </div>
+        </>
+      )}
+
+      {(activeAction === "cancel_envelope" || activeAction === "reject_quote") && (
+        <div className="grid gap-1.5">
+          <Label className="text-xs">Motivo <span className="text-muted-foreground">(Opcional)</span></Label>
+          <Input value={actionNote} onChange={e => setActionNote(e.target.value)} className="h-9 text-sm"
+            placeholder={activeAction === "reject_quote" ? "Ej: El cliente no acepta el precio" : "Ej: El cliente desistió"} />
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <Button variant="outline" size="sm" onClick={() => { setActiveAction(null); resetActionForm() }}>
+          Cancelar
+        </Button>
+        <Button size="sm"
+          disabled={actionSaving ||
+            (activeAction === "transfer" && !actionWarehouseId) ||
+            (activeAction === "deliver" && !actionDeliveredBy.trim())}
+          onClick={handleAction}>
+          {actionSaving ? "Guardando..." : "Confirmar"}
+        </Button>
+      </div>
+    </div>
+  )
+
   return (
     <Dialog open={!!envelope} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
@@ -1066,27 +1160,93 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
             </div>
           </section>
 
-          {/* ── 3. ACCIONES DISPONIBLES ── */}
-          {!editing && availableActions.length > 0 && (
+          {/* Selector de operador — persiste en localStorage, compartido por ambas tarjetas de acciones */}
+          {!editing && (quoteActions.length > 0 || otherActions.length > 0) && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 border border-border">
+              <span className="text-xs text-muted-foreground shrink-0">Operador:</span>
+              <Input
+                value={actionOperator}
+                onChange={e => {
+                  setActionOperator(e.target.value)
+                  localStorage.setItem("sobres_operator", e.target.value)
+                }}
+                className="h-7 text-xs border-0 bg-transparent p-0 focus-visible:ring-0 flex-1"
+                placeholder="Tu nombre..."
+              />
+            </div>
+          )}
+
+          {/* ── 3. PRESUPUESTO ── */}
+          {!editing && (envelope.quote_status !== "not_required" || quoteActions.length > 0) && (!activeAction || isQuoteAction) && (
+            <section>
+              <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Presupuesto</p>
+              <div className="rounded-xl border border-border bg-muted/20 p-4 grid gap-3">
+                {envelope.quote_status === "approved" ? (
+                  <div className="flex items-center gap-2 font-semibold text-green-700 dark:text-green-400">
+                    <span className="text-lg leading-none">✅</span> Presupuesto aprobado
+                  </div>
+                ) : envelope.quote_status === "rejected" ? (
+                  <div className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-400">
+                    <span className="text-lg leading-none">❌</span> Presupuesto rechazado
+                  </div>
+                ) : envelope.quote_status !== "not_required" ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Estado</p>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium mt-0.5 ${QUOTE_STATUS_COLORS[envelope.quote_status]}`}>
+                        {QUOTE_STATUS_LABELS[envelope.quote_status]}
+                      </span>
+                    </div>
+                    {envelope.quote_amount != null && (
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Monto</p>
+                        <p className="font-semibold">${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Aún no se solicitó presupuesto.</p>
+                )}
+
+                {envelope.quote_notes && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Detalle</p>
+                    <p className="text-sm">{envelope.quote_notes}</p>
+                  </div>
+                )}
+
+                {!activeAction ? (
+                  quoteActions.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {quoteActions.map(action => (
+                        <Button
+                          key={action}
+                          variant={ACTION_CONFIG[action].variant === "default" ? "default" : "outline"}
+                          size="sm"
+                          className={action === "reject_quote" ? "text-destructive border-destructive/40 hover:bg-destructive/10" : ""}
+                          onClick={() => { resetActionForm(); setActiveAction(action) }}
+                        >
+                          <span className="mr-1.5">{ACTION_CONFIG[action].icon}</span>
+                          {ACTION_CONFIG[action].label}
+                        </Button>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  isQuoteAction && actionFormPanel
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ── 4. ACCIONES DISPONIBLES ── */}
+          {!editing && otherActions.length > 0 && (!activeAction || !isQuoteAction) && (
             <section>
               <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Acciones disponibles</p>
-              {/* Selector de operador — persiste en localStorage */}
-              <div className="flex items-center gap-2 mb-3 p-2 rounded-lg bg-muted/40 border border-border">
-                <span className="text-xs text-muted-foreground shrink-0">Operador:</span>
-                <Input
-                  value={actionOperator}
-                  onChange={e => {
-                    setActionOperator(e.target.value)
-                    localStorage.setItem("sobres_operator", e.target.value)
-                  }}
-                  className="h-7 text-xs border-0 bg-transparent p-0 focus-visible:ring-0 flex-1"
-                  placeholder="Tu nombre..."
-                />
-              </div>
               {!activeAction ? (
                 <div className="grid gap-2">
                   {/* Acciones primarias */}
-                  {availableActions.filter(a => ACTION_CONFIG[a].variant === "default").map(action => (
+                  {otherActions.filter(a => ACTION_CONFIG[a].variant === "default").map(action => (
                     <Button
                       key={action}
                       className="h-11 justify-start gap-3"
@@ -1097,7 +1257,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                     </Button>
                   ))}
                   {/* Acciones secundarias */}
-                  {availableActions.filter(a => ACTION_CONFIG[a].variant === "outline").map(action => (
+                  {otherActions.filter(a => ACTION_CONFIG[a].variant === "outline").map(action => (
                     <Button
                       key={action}
                       variant="outline"
@@ -1109,9 +1269,9 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                     </Button>
                   ))}
                   {/* Acciones destructivas */}
-                  {availableActions.filter(a => ACTION_CONFIG[a].variant === "destructive").length > 0 && (
+                  {otherActions.filter(a => ACTION_CONFIG[a].variant === "destructive").length > 0 && (
                     <div className="pt-1 border-t border-border mt-1">
-                      {availableActions.filter(a => ACTION_CONFIG[a].variant === "destructive").map(action => (
+                      {otherActions.filter(a => ACTION_CONFIG[a].variant === "destructive").map(action => (
                         <Button
                           key={action}
                           variant="ghost"
@@ -1127,90 +1287,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                   )}
                 </div>
               ) : (
-                <div className="rounded-xl border border-border bg-muted/30 p-4 grid gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl leading-none">{ACTION_CONFIG[activeAction].icon}</span>
-                    <p className="font-semibold">{ACTION_CONFIG[activeAction].label}</p>
-                  </div>
-
-                  {activeAction === "send_to_jeweler" && (
-                    <div className="grid gap-1.5">
-                      <Label className="text-xs">Joyero <span className="text-muted-foreground">(Opcional)</span></Label>
-                      <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Sin asignar</SelectItem>
-                          {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {activeAction === "transfer" && (
-                    <div className="grid gap-1.5">
-                      <Label className="text-xs">Destino <span className="text-destructive">*</span></Label>
-                      <Select value={actionWarehouseId || "none"} onValueChange={v => setActionWarehouseId(v === "none" ? "" : v)}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Seleccionar local..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Seleccionar...</SelectItem>
-                          {warehouses.filter(w => w.is_active && w.id !== envelope.current_warehouse_id)
-                            .map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {activeAction === "inform_quote" && (
-                    <>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Monto <span className="text-muted-foreground">(Opcional)</span></Label>
-                        <Input type="number" value={actionQuoteAmount} onChange={e => setActionQuoteAmount(e.target.value)}
-                          className="h-9 text-sm" placeholder="25000" min="0" step="0.01" />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Detalle <span className="text-muted-foreground">(Opcional)</span></Label>
-                        <Input value={actionQuoteNotes} onChange={e => setActionQuoteNotes(e.target.value)}
-                          className="h-9 text-sm" placeholder="Ej: Cambio de cierre + soldadura" />
-                      </div>
-                    </>
-                  )}
-
-                  {activeAction === "deliver" && (
-                    <>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Entregado a <span className="text-destructive">*</span></Label>
-                        <Input value={actionDeliveredBy} onChange={e => setActionDeliveredBy(e.target.value)}
-                          className="h-9 text-sm" placeholder="Nombre y apellido" />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Observaciones <span className="text-muted-foreground">(Opcional)</span></Label>
-                        <Input value={actionDeliveryNotes} onChange={e => setActionDeliveryNotes(e.target.value)}
-                          className="h-9 text-sm" placeholder="Ej: Retirado con DNI 12345678" />
-                      </div>
-                    </>
-                  )}
-
-                  {(activeAction === "cancel_envelope" || activeAction === "reject_quote") && (
-                    <div className="grid gap-1.5">
-                      <Label className="text-xs">Motivo <span className="text-muted-foreground">(Opcional)</span></Label>
-                      <Input value={actionNote} onChange={e => setActionNote(e.target.value)} className="h-9 text-sm"
-                        placeholder={activeAction === "reject_quote" ? "Ej: El cliente no acepta el precio" : "Ej: El cliente desistió"} />
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-1">
-                    <Button variant="outline" size="sm" onClick={() => { setActiveAction(null); resetActionForm() }}>
-                      Cancelar
-                    </Button>
-                    <Button size="sm"
-                      disabled={actionSaving ||
-                        (activeAction === "transfer" && !actionWarehouseId) ||
-                        (activeAction === "deliver" && !actionDeliveredBy.trim())}
-                      onClick={handleAction}>
-                      {actionSaving ? "Guardando..." : "Confirmar"}
-                    </Button>
-                  </div>
-                </div>
+                !isQuoteAction && actionFormPanel
               )}
             </section>
           )}
