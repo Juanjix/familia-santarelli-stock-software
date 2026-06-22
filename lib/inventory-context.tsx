@@ -112,7 +112,7 @@ interface InventoryContextType {
   deleteEmployee: (id: string) => Promise<void>
   fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
   createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id'>) => Promise<Envelope | null>
-  updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string) => Promise<void>
+  updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, createdBy?: string) => Promise<void>
   getEnvelopeStatusLog: (envelopeId: string) => Promise<EnvelopeStatusLog[]>
   fetchEnvelopeEvents: (envelopeId: string) => Promise<EnvelopeEvent[]>
 }
@@ -786,7 +786,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     rejected: 'Presupuesto rechazado por el cliente',
   }
 
-  const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string): Promise<void> => {
+  const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, createdBy?: string): Promise<void> => {
     const { data: current } = await supabase
       .from("envelopes")
       .select("status, jeweler_id, quote_status, quote_amount, current_warehouse_id")
@@ -841,7 +841,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
 
     if (events.length > 0) {
-      await supabase.from("envelope_events").insert(events.map(e => ({ ...e, envelope_id: id })))
+      await supabase.from("envelope_events").insert(events.map(e => ({ ...e, envelope_id: id, created_by: createdBy || 'Sistema' })))
     }
   }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 

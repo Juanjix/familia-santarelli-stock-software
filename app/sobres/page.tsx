@@ -237,6 +237,26 @@ function formatDateTime(dateStr: string) {
     " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
 }
 
+function daysElapsed(dateStr: string | null | undefined): number {
+  if (!dateStr) return 0
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000)
+}
+
+function elapsedLabel(days: number): string {
+  if (days === 0) return "Hoy"
+  if (days === 1) return "Hace 1 día"
+  return `Hace ${days} días`
+}
+
+function elapsedBadgeColor(status: EnvelopeStatus, days: number): string {
+  if (status === "in_workshop" || status === "ready") {
+    if (days <= 7) return "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+    if (days <= 14) return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+    return "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+  }
+  return "bg-muted text-muted-foreground"
+}
+
 // Devuelve la ubicación actual legible del sobre
 function getEnvelopeLocation(envelope: Envelope): string {
   if (envelope.status === "delivered") return "Entregado"
@@ -831,7 +851,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
 interface EnvelopeDetailDialogProps {
   envelope: Envelope | null
   onClose: () => void
-  onUpdated: (id: string, updates: Partial<Envelope>, statusNote?: string) => Promise<void>
+  onUpdated: (id: string, updates: Partial<Envelope>, statusNote?: string, createdBy?: string) => Promise<void>
   onPrint: (envelope: Envelope) => void
 }
 
@@ -862,6 +882,10 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   const [actionDeliveryNotes, setActionDeliveryNotes] = useState("")
   const [actionNote, setActionNote] = useState("")
   const [actionSaving, setActionSaving] = useState(false)
+  const [actionOperator, setActionOperator] = useState<string>(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("sobres_operator") || ""
+    return ""
+  })
 
   const resetActionForm = () => {
     setActionJewelerId("")
@@ -919,22 +943,20 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
 
   const handleAction = async () => {
     setActionSaving(true)
+    const op = actionOperator.trim() || undefined
     try {
       switch (activeAction) {
         case "request_quote":
-          await onUpdated(envelope.id, { status: "quote_pending", quote_status: "pending" })
+          await onUpdated(envelope.id, { status: "quote_pending", quote_status: "pending" }, undefined, op)
           break
         case "send_to_jeweler":
-          await onUpdated(envelope.id, {
-            status: "in_workshop",
-            jeweler_id: actionJewelerId || null,
-          })
+          await onUpdated(envelope.id, { status: "in_workshop", jeweler_id: actionJewelerId || null }, undefined, op)
           break
         case "receive_from_jeweler":
-          await onUpdated(envelope.id, { status: "ready" })
+          await onUpdated(envelope.id, { status: "ready" }, undefined, op)
           break
         case "transfer":
-          await onUpdated(envelope.id, { current_warehouse_id: actionWarehouseId })
+          await onUpdated(envelope.id, { current_warehouse_id: actionWarehouseId }, undefined, op)
           break
         case "inform_quote":
           await onUpdated(envelope.id, {
@@ -942,20 +964,21 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
             quote_amount: actionQuoteAmount ? parseFloat(actionQuoteAmount) : null,
             quote_notes: actionQuoteNotes.trim() || null,
             quote_informed_at: new Date().toISOString(),
-          })
+          }, undefined, op)
           break
         case "approve_quote":
           await onUpdated(envelope.id, {
             status: "quote_approved",
             quote_status: "approved",
             quote_approved_at: new Date().toISOString(),
-          })
+          }, undefined, op)
           break
         case "reject_quote":
           await onUpdated(
             envelope.id,
             { status: "received", quote_status: "rejected" },
-            actionNote.trim() || "Presupuesto rechazado por el cliente"
+            actionNote.trim() || "Presupuesto rechazado por el cliente",
+            op
           )
           break
         case "deliver":
@@ -967,15 +990,12 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
               delivered_by: actionDeliveredBy.trim() || null,
               delivery_notes: actionDeliveryNotes.trim() || null,
             },
-            actionDeliveredBy.trim() ? `Entregado a ${actionDeliveredBy.trim()}` : undefined
+            actionDeliveredBy.trim() ? `Entregado a ${actionDeliveredBy.trim()}` : undefined,
+            op
           )
           break
         case "cancel_envelope":
-          await onUpdated(
-            envelope.id,
-            { status: "cancelled" },
-            actionNote.trim() || undefined
-          )
+          await onUpdated(envelope.id, { status: "cancelled" }, actionNote.trim() || undefined, op)
           break
       }
       setActiveAction(null)
@@ -1022,12 +1042,18 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                   <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
                   <span className="font-semibold text-sm">{getEnvelopeLocation(envelope)}</span>
                 </div>
-                {reversedEvents.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                    <Clock className="h-3 w-3 shrink-0" />
-                    Último mov.: {formatDateTime(reversedEvents[0].created_at)}
-                  </p>
-                )}
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {reversedEvents.length > 0 && reversedEvents[0].created_by && reversedEvents[0].created_by !== "Sistema" && (
+                    <div>
+                      <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Último responsable</span>
+                      <span className="font-semibold text-foreground">{reversedEvents[0].created_by}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Tiempo en estado</span>
+                    <span className="font-semibold text-foreground">{elapsedLabel(daysElapsed(envelope.updated_at))}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1044,6 +1070,19 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
           {!editing && availableActions.length > 0 && (
             <section>
               <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Acciones disponibles</p>
+              {/* Selector de operador — persiste en localStorage */}
+              <div className="flex items-center gap-2 mb-3 p-2 rounded-lg bg-muted/40 border border-border">
+                <span className="text-xs text-muted-foreground shrink-0">Operador:</span>
+                <Input
+                  value={actionOperator}
+                  onChange={e => {
+                    setActionOperator(e.target.value)
+                    localStorage.setItem("sobres_operator", e.target.value)
+                  }}
+                  className="h-7 text-xs border-0 bg-transparent p-0 focus-visible:ring-0 flex-1"
+                  placeholder="Tu nombre..."
+                />
+              </div>
               {!activeAction ? (
                 <div className="grid gap-2">
                   {/* Acciones primarias */}
@@ -1208,12 +1247,19 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                         {event.detail && (
                           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{event.detail}</p>
                         )}
-                        <p className="text-xs text-muted-foreground/60 mt-1">
-                          {formatDateTime(event.created_at)}
-                          {event.created_by && event.created_by !== "Sistema"
-                            ? ` · ${event.created_by}`
-                            : ""}
-                        </p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                          {event.created_by && event.created_by !== "Sistema" && (
+                            <span className="text-xs font-medium text-foreground/80">
+                              Por: {event.created_by}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground/70">
+                            {formatDateTime(event.created_at)}
+                          </span>
+                          <span className="text-xs text-muted-foreground/50">
+                            {elapsedLabel(daysElapsed(event.created_at))}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1436,8 +1482,8 @@ export default function SobresPage() {
     setDetailEnvelope(envelope)
   }
 
-  const handleUpdated = useCallback(async (id: string, updates: Partial<Envelope>, statusNote?: string) => {
-    await updateEnvelope(id, updates, statusNote)
+  const handleUpdated = useCallback(async (id: string, updates: Partial<Envelope>, statusNote?: string, createdBy?: string) => {
+    await updateEnvelope(id, updates, statusNote, createdBy)
 
     // Also update customer phone/address if those were passed (not directly in envelope)
     // Note: phone/address live on the customer record, but we pass them through the edit handler
@@ -1515,7 +1561,16 @@ export default function SobresPage() {
                         </p>
                         {e.product_material && <p className="text-xs text-muted-foreground">{getMaterialDisplay(e.product_material, e.product_material_detail)}</p>}
                       </TableCell>
-                      <TableCell><StatusBadge status={e.status} /></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <StatusBadge status={e.status} />
+                          {!["delivered", "cancelled"].includes(e.status) && (
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium w-fit ${elapsedBadgeColor(e.status, daysElapsed(e.updated_at))}`}>
+                              {elapsedLabel(daysElapsed(e.updated_at))}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         {e.quote_status !== "not_required" && (
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${QUOTE_STATUS_COLORS[e.quote_status]}`}>
