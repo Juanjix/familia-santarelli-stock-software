@@ -300,7 +300,7 @@ function printEnvelope(envelope: Envelope) {
     <div class="row"><span class="label">DNI</span><span class="value">${c?.dni || "—"}</span></div>
     <div class="row"><span class="label">Domicilio</span><span class="value">${c?.address || "—"}</span></div>
     <div class="divider"></div>
-    <div class="row"><span class="label">Artículo</span><span class="value">${type}${subtype ? ` — ${subtype}` : ""}${envelope.product_material ? ` · ${getMaterialDisplay(envelope.product_material, envelope.product_material_detail)}` : ""}</span></div>
+    <div class="row"><span class="label">Artículo</span><span class="value">${type}${subtype ? ` — ${subtype}` : ""}${envelope.product_material ? ` · ${getMaterialDisplay(envelope.product_material, envelope.product_material_detail)}` : ""}${envelope.product_material === "ORO" && envelope.product_weight != null ? ` · ${envelope.product_weight}g` : ""}</span></div>
     <div class="row"><span class="label">Estado</span><span class="value">${condition}</span></div>
     ${envelope.product_condition_notes ? `<div class="row"><span class="label">Obs. estado</span><span class="value">${envelope.product_condition_notes}</span></div>` : ""}
     <div class="divider"></div>
@@ -410,6 +410,7 @@ interface WizardState {
   productSubtypeId: string
   productMaterial: string
   productMaterialDetail: string
+  productWeight: string
   productCondition: "very_good" | "good" | "regular"
   productConditionNotes: string
   purchasedAtStore: boolean
@@ -431,6 +432,7 @@ const defaultWizard: WizardState = {
   productSubtypeId: "",
   productMaterial: "",
   productMaterialDetail: "",
+  productWeight: "",
   productCondition: "good",
   productConditionNotes: "",
   purchasedAtStore: false,
@@ -527,6 +529,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
         product_subtype_id: form.productSubtypeId || null,
         product_material: form.productMaterial || null,
         product_material_detail: form.productMaterial === "OTROS" ? form.productMaterialDetail.trim() || null : null,
+        product_weight: form.productMaterial === "ORO" && form.productWeight ? parseFloat(form.productWeight) : null,
         product_condition: form.productCondition,
         product_condition_notes: form.productConditionNotes.trim() || null,
         purchased_at_store: form.purchasedAtStore,
@@ -683,7 +686,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
 
             <div className="grid gap-1.5">
               <Label>Material <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-              <Select value={form.productMaterial || "none"} onValueChange={(v) => { set("productMaterial", v === "none" ? "" : v); set("productMaterialDetail", "") }}>
+              <Select value={form.productMaterial || "none"} onValueChange={(v) => { set("productMaterial", v === "none" ? "" : v); set("productMaterialDetail", ""); set("productWeight", "") }}>
                 <SelectTrigger><SelectValue placeholder="Sin especificar" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sin especificar</SelectItem>
@@ -699,6 +702,20 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
                 />
               )}
             </div>
+
+            {form.productMaterial === "ORO" && (
+              <div className="grid gap-1.5">
+                <Label>Peso (gramos) <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
+                <Input
+                  type="number"
+                  value={form.productWeight}
+                  onChange={e => set("productWeight", e.target.value)}
+                  placeholder="Ej: 12.5"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+            )}
 
             <div className="grid gap-1.5">
               <Label>Estado del artículo <span className="text-destructive">*</span></Label>
@@ -869,6 +886,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   const [editAddress, setEditAddress] = useState("")
   const [editMaterial, setEditMaterial] = useState("")
   const [editMaterialDetail, setEditMaterialDetail] = useState("")
+  const [editProductWeight, setEditProductWeight] = useState("")
   const [editPurchasedAtStore, setEditPurchasedAtStore] = useState(false)
   const [editPurchaseDate, setEditPurchaseDate] = useState("")
   const [editEstimatedReadyDate, setEditEstimatedReadyDate] = useState("")
@@ -914,6 +932,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       const { option, customDetail } = parseMaterialForEdit(envelope.product_material, envelope.product_material_detail)
       setEditMaterial(option)
       setEditMaterialDetail(customDetail)
+      setEditProductWeight(envelope.product_weight != null ? String(envelope.product_weight) : "")
       setEditPurchasedAtStore(envelope.purchased_at_store)
       setEditPurchaseDate(envelope.purchase_date || "")
       setEditEstimatedReadyDate(envelope.estimated_ready_date || "")
@@ -935,6 +954,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
       await onUpdated(envelope.id, {
         product_material: editMaterial || null,
         product_material_detail: editMaterial === "OTROS" ? editMaterialDetail.trim() || null : null,
+        product_weight: editMaterial === "ORO" && editProductWeight ? parseFloat(editProductWeight) : null,
         purchased_at_store: editPurchasedAtStore,
         purchase_date: editPurchaseDate || null,
         estimated_ready_date: editEstimatedReadyDate || null,
@@ -1379,6 +1399,9 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                   {envelope.product_material && (
                     <p className="text-muted-foreground text-xs">
                       Material: {getMaterialDisplay(envelope.product_material, envelope.product_material_detail)}
+                      {envelope.product_material === "ORO" && envelope.product_weight != null
+                        ? ` · Peso: ${envelope.product_weight}g`
+                        : ""}
                     </p>
                   )}
                   <p className="text-muted-foreground text-xs">Estado: {CONDITION_LABELS[envelope.product_condition]}</p>
@@ -1395,7 +1418,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                 <div className="mt-2 grid gap-2">
                   <div className="grid gap-1">
                     <Label className="text-xs">Material</Label>
-                    <Select value={editMaterial || "none"} onValueChange={(v) => { setEditMaterial(v === "none" ? "" : v); setEditMaterialDetail("") }}>
+                    <Select value={editMaterial || "none"} onValueChange={(v) => { setEditMaterial(v === "none" ? "" : v); setEditMaterialDetail(""); setEditProductWeight("") }}>
                       <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sin especificar" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Sin especificar</SelectItem>
@@ -1405,6 +1428,10 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                     {editMaterial === "OTROS" && (
                       <Input value={editMaterialDetail} onChange={e => setEditMaterialDetail(e.target.value)}
                         className="h-8 text-sm mt-1" placeholder="Ej: Titanio, Acero, Bronce" />
+                    )}
+                    {editMaterial === "ORO" && (
+                      <Input type="number" value={editProductWeight} onChange={e => setEditProductWeight(e.target.value)}
+                        className="h-8 text-sm mt-1" placeholder="Peso en gramos" min="0" step="0.01" />
                     )}
                   </div>
                   <div className="flex items-center gap-2">
