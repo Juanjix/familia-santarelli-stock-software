@@ -762,10 +762,12 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       warehouseName ? `Local: ${warehouseName}` : null,
       employeeName ? `Operador: ${employeeName}` : null,
     ].filter(Boolean).join(' · ') || null
-    await Promise.all([
+    const [statusLogResult, eventResult] = await Promise.all([
       supabase.from("envelope_status_log").insert({ envelope_id: created.id, from_status: null, to_status: 'received', changed_by: employeeName || 'Sistema' }),
       supabase.from("envelope_events").insert({ envelope_id: created.id, event_type: 'envelope_created', title: `Sobre recibido${warehouseName ? ` en ${warehouseName}` : ''}`, detail, created_by: employeeName || 'Sistema' }),
     ])
+    if (statusLogResult.error) console.error("Error creating envelope_status_log entry:", statusLogResult.error)
+    if (eventResult.error) console.error("Error creating envelope_events entry:", eventResult.error)
     return env
   }, [supabase])
 
@@ -801,10 +803,11 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     // Status change
     if (updates.status && current && updates.status !== current.status) {
       events.push({ event_type: 'status_changed', title: STATUS_EVENT_TITLES[updates.status], detail: statusNote || null })
-      await supabase.from("envelope_status_log").insert({
+      const { error: statusLogError } = await supabase.from("envelope_status_log").insert({
         envelope_id: id, from_status: current.status, to_status: updates.status,
         changed_by: 'Sistema', notes: statusNote || null,
       })
+      if (statusLogError) console.error("Error creating envelope_status_log entry:", statusLogError)
     }
 
     // Jeweler change
@@ -841,7 +844,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
 
     if (events.length > 0) {
-      await supabase.from("envelope_events").insert(events.map(e => ({ ...e, envelope_id: id, created_by: createdBy || 'Sistema' })))
+      const { error: eventsError } = await supabase.from("envelope_events").insert(events.map(e => ({ ...e, envelope_id: id, created_by: createdBy || 'Sistema' })))
+      if (eventsError) console.error("Error creating envelope_events entries:", eventsError)
     }
   }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
