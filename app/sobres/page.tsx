@@ -47,7 +47,7 @@ import {
   Printer,
   Pencil,
 } from "lucide-react"
-import type { Envelope, EnvelopeStatus, EnvelopeEvent, QuoteStatus } from "@/lib/types"
+import type { Envelope, EnvelopeStatus, EnvelopeEvent, QuoteStatus, Employee } from "@/lib/types"
 
 // ── Status helpers ──────────────────────────────────────────────────────────
 
@@ -267,6 +267,7 @@ function printEnvelope(envelope: Envelope) {
     ${envelope.quote_amount != null ? `<div class="row"><span class="label">Monto</span><span class="value">$${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></div>` : ""}
     ${envelope.quote_notes ? `<div class="row"><span class="label">Detalle</span><span class="value">${envelope.quote_notes}</span></div>` : ""}
     <div class="row"><span class="label">Local receptor</span><span class="value">${warehouse}</span></div>
+    <div class="row"><span class="label">Recibido por</span><span class="value">${envelope.received_by_employee?.name || "—"}</span></div>
     <div class="row"><span class="label">Fecha recepción</span><span class="value">${formatDate(envelope.received_at)}</span></div>
     ${envelope.estimated_ready_date ? `<div class="row"><span class="label">Fecha estimada</span><span class="value">${formatDate(envelope.estimated_ready_date)}</span></div>` : ""}
   `
@@ -360,6 +361,7 @@ interface WizardState {
   newDni: string
   newPhone: string
   newAddress: string
+  employeeId: string
   productType: "jewelry" | "watch"
   productSubtypeId: string
   productMaterial: string
@@ -380,6 +382,7 @@ const defaultWizard: WizardState = {
   customerMode: "existing",
   customerId: "",
   newFirstName: "", newLastName: "", newDni: "", newPhone: "", newAddress: "",
+  employeeId: "",
   productType: "jewelry",
   productSubtypeId: "",
   productMaterial: "",
@@ -424,7 +427,7 @@ interface NewEnvelopeDialogProps {
 }
 
 function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps) {
-  const { customers, jewelers, envelopeSubtypes, warehouses, addCustomer, createEnvelope } = useInventory()
+  const { customers, jewelers, employees, envelopeSubtypes, warehouses, addCustomer, createEnvelope } = useInventory()
   const [step, setStep] = useState<WizardStep>("customer")
   const [form, setForm] = useState<WizardState>(defaultWizard)
   const [saving, setSaving] = useState(false)
@@ -441,10 +444,12 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
     }
   }, [open, warehouses])
 
-  const canAdvanceCustomer = () =>
-    form.customerMode === "existing"
+  const canAdvanceCustomer = () => {
+    const customerOk = form.customerMode === "existing"
       ? !!form.customerId
       : !!form.newFirstName.trim() && !!form.newLastName.trim() && !!form.newDni.trim()
+    return customerOk && !!form.employeeId && !!form.warehouseId
+  }
 
   const canAdvanceWork = () => !!form.workDescription.trim()
 
@@ -473,6 +478,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
         customer_id: customerId,
         received_at: new Date().toISOString(),
         received_warehouse_id: form.warehouseId,
+        received_by_employee_id: form.employeeId || null,
         product_type: form.productType,
         product_subtype_id: form.productSubtypeId || null,
         product_material: form.productMaterial || null,
@@ -583,6 +589,19 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
                 <SelectContent>
                   {warehouses.filter(w => w.is_active).map(w => (
                     <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label>Recibido por <span className="text-destructive">*</span></Label>
+              <Select value={form.employeeId || "none"} onValueChange={(v) => set("employeeId", v === "none" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar empleado..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Seleccionar...</SelectItem>
+                  {employees.filter(e => e.is_active).map(e => (
+                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1009,6 +1028,12 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
               <p className="text-xs text-muted-foreground">Fecha recepción</p>
               <p className="font-medium">{formatDate(envelope.received_at)}</p>
             </div>
+            {envelope.received_by_employee && (
+              <div className="rounded-lg border border-border p-3 col-span-2">
+                <p className="text-xs text-muted-foreground">Recibido por</p>
+                <p className="font-medium">{envelope.received_by_employee.name}</p>
+              </div>
+            )}
           </section>
 
           {/* Artículo — histórico */}

@@ -54,7 +54,7 @@ import {
   Hash,
   Type,
 } from "lucide-react"
-import type { Brand, Category, CategoryAttribute, Supplier, Jeweler } from "@/lib/types"
+import type { Brand, Category, CategoryAttribute, Supplier, Jeweler, Employee } from "@/lib/types"
 
 function slugify(text: string): string {
   return text
@@ -73,6 +73,7 @@ export default function SettingsPage() {
     brands, addBrand, updateBrand, deleteBrand,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
     jewelers, addJeweler, updateJeweler, deleteJeweler,
+    employees, addEmployee, updateEmployee, deleteEmployee,
     products,
   } = useInventory()
 
@@ -343,6 +344,45 @@ export default function SettingsPage() {
     if (!deletingJeweler) return
     await deleteJeweler(deletingJeweler.id)
     setDeletingJeweler(null)
+  }
+
+  // ── Empleados ───────────────────────────────────────────────────────────────
+  const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false)
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [employeeDialogName, setEmployeeDialogName] = useState("")
+  const [employeeDialogActive, setEmployeeDialogActive] = useState(true)
+  const [savingEmployee, setSavingEmployee] = useState(false)
+  const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null)
+
+  const handleSaveEmployee = async () => {
+    if (!employeeDialogName.trim()) return
+    setSavingEmployee(true)
+    try {
+      if (editingEmployee) {
+        await updateEmployee(editingEmployee.id, { name: employeeDialogName.trim(), is_active: employeeDialogActive })
+      } else {
+        await addEmployee(employeeDialogName.trim())
+      }
+      resetEmployeeForm()
+      setEmployeeDialogOpen(false)
+    } finally {
+      setSavingEmployee(false)
+    }
+  }
+
+  const resetEmployeeForm = () => {
+    setEmployeeDialogName(""); setEmployeeDialogActive(true); setEditingEmployee(null)
+  }
+
+  const openEditEmployee = (e: Employee) => {
+    setEditingEmployee(e); setEmployeeDialogName(e.name); setEmployeeDialogActive(e.is_active)
+    setEmployeeDialogOpen(true)
+  }
+
+  const handleDeleteEmployee = async () => {
+    if (!deletingEmployee) return
+    await deleteEmployee(deletingEmployee.id)
+    setDeletingEmployee(null)
   }
 
   // ── Marcas ─────────────────────────────────────────────────────────────────
@@ -1219,6 +1259,99 @@ export default function SettingsPage() {
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={handleDeleteJeweler}
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Empleados */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Empleados
+                  </CardTitle>
+                  <CardDescription>Personal que puede recibir sobres</CardDescription>
+                </div>
+                <Dialog open={employeeDialogOpen} onOpenChange={(open) => { setEmployeeDialogOpen(open); if (!open) resetEmployeeForm() }}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" onClick={() => resetEmployeeForm()}>
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      Agregar
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>{editingEmployee ? "Editar empleado" : "Nuevo empleado"}</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-3 py-2">
+                      <div className="grid gap-1.5">
+                        <Label>Nombre</Label>
+                        <Input value={employeeDialogName} onChange={(e) => setEmployeeDialogName(e.target.value)} placeholder="Ej: María García" autoFocus />
+                      </div>
+                      {editingEmployee && (
+                        <div className="flex items-center gap-2">
+                          <Switch checked={employeeDialogActive} onCheckedChange={setEmployeeDialogActive} id="employee-active" />
+                          <Label htmlFor="employee-active">Activo</Label>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button onClick={handleSaveEmployee} disabled={!employeeDialogName.trim() || savingEmployee}>
+                        {savingEmployee ? "Guardando..." : "Guardar"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {employees.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No hay empleados registrados.</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {employees.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between py-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-medium ${!e.is_active ? "text-muted-foreground line-through" : ""}`}>
+                          {e.name}
+                        </span>
+                        {!e.is_active && <Badge variant="secondary" className="text-xs">Inactivo</Badge>}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditEmployee(e)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive"
+                          onClick={() => setDeletingEmployee(e)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Confirmar eliminar empleado */}
+          <AlertDialog open={!!deletingEmployee} onOpenChange={(open) => !open && setDeletingEmployee(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar empleado?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Vas a eliminar <strong>{deletingEmployee?.name}</strong>. Los sobres recibidos por este empleado mantendrán el registro histórico.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleDeleteEmployee}
                 >
                   Eliminar
                 </AlertDialogAction>

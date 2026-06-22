@@ -29,6 +29,14 @@ export interface Jeweler {
   updated_at: string
 }
 
+export interface Employee {
+  id: string
+  name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface EnvelopeSubtype {
   id: string
   name: string
@@ -61,6 +69,7 @@ export interface Envelope {
   quote_informed_at: string | null
   quote_approved_at: string | null
   jeweler_id: string | null
+  received_by_employee_id: string | null
   estimated_ready_date: string | null
   delivered_at: string | null
   delivered_by: string | null
@@ -72,6 +81,7 @@ export interface Envelope {
   customer?: Customer
   received_warehouse?: { id: string; name: string }
   jeweler?: Jeweler
+  received_by_employee?: Employee
   product_subtype?: EnvelopeSubtype
 }
 
