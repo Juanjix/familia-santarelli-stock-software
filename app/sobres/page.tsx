@@ -46,6 +46,7 @@ import {
   HelpCircle,
   Printer,
   Pencil,
+  MapPin,
 } from "lucide-react"
 import type { Envelope, EnvelopeStatus, EnvelopeEvent, QuoteStatus, Employee } from "@/lib/types"
 
@@ -138,6 +139,26 @@ function getAvailableActions(envelope: Envelope): Exclude<ActiveAction, null>[] 
       break
   }
   return a
+}
+
+const STATUS_EMOJI: Record<EnvelopeStatus, string> = {
+  received:      "📬",
+  quote_pending: "💬",
+  quote_approved:"✅",
+  in_workshop:   "🔧",
+  ready:         "📦",
+  delivered:     "🤝",
+  cancelled:     "❌",
+}
+
+const STATUS_CARD_COLORS: Record<EnvelopeStatus, string> = {
+  received:      "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30",
+  quote_pending: "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/30",
+  quote_approved:"border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30",
+  in_workshop:   "border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/30",
+  ready:         "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30",
+  delivered:     "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/30",
+  cancelled:     "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30",
 }
 
 const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
@@ -965,80 +986,266 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
     }
   }
 
+  const reversedEvents = [...events].reverse()
+
   return (
     <Dialog open={!!envelope} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <DialogTitle className="font-mono text-xl">{envelope.number}</DialogTitle>
-            <div className="flex items-center gap-2 flex-wrap">
-              <StatusBadge status={envelope.status} />
-              <QuoteBadge status={envelope.quote_status} />
-            </div>
-          </div>
-          {/* Ubicación actual + último movimiento */}
-          <div className="flex items-center gap-3 pt-1 text-xs text-muted-foreground flex-wrap">
-            <span className="flex items-center gap-1">
-              <span className="text-base leading-none">📍</span>
-              <span className="font-medium text-foreground">{getEnvelopeLocation(envelope)}</span>
-            </span>
-            {events.length > 0 && (
-              <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                Último mov.: {formatDateTime(events[events.length - 1].created_at)}
-              </span>
-            )}
+
+        {/* ── HEADER ── */}
+        <DialogHeader className="pb-0">
+          <div className="flex items-center justify-between gap-2">
+            <DialogTitle className="font-mono text-2xl font-bold tracking-tight">
+              {envelope.number}
+            </DialogTitle>
+            <Button variant="ghost" size="sm" onClick={() => onPrint(envelope)} className="shrink-0 text-muted-foreground">
+              <Printer className="h-4 w-4 mr-1.5" /> Imprimir
+            </Button>
           </div>
         </DialogHeader>
 
-        <div className="grid gap-4 text-sm">
-          {/* Cliente — datos históricos */}
+        <div className="grid gap-5 text-sm mt-2">
+
+          {/* ── 1. TARJETA DE ESTADO Y UBICACIÓN ── */}
+          <div className={`rounded-xl border-2 p-4 ${STATUS_CARD_COLORS[envelope.status]}`}>
+            <div className="flex items-start gap-3">
+              <span className="text-3xl leading-none mt-0.5 shrink-0">{STATUS_EMOJI[envelope.status]}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-base leading-snug">{STATUS_LABELS[envelope.status]}</p>
+                {envelope.quote_status !== "not_required" && (
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium mt-1 ${QUOTE_STATUS_COLORS[envelope.quote_status]}`}>
+                    Presupuesto: {QUOTE_STATUS_LABELS[envelope.quote_status]}
+                    {envelope.quote_amount != null ? ` · $${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}` : ""}
+                  </span>
+                )}
+                <div className="flex items-center gap-1.5 mt-2">
+                  <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="font-semibold text-sm">{getEnvelopeLocation(envelope)}</span>
+                </div>
+                {reversedEvents.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                    <Clock className="h-3 w-3 shrink-0" />
+                    Último mov.: {formatDateTime(reversedEvents[0].created_at)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── 2. TRABAJO SOLICITADO ── */}
           <section>
-            <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Cliente</p>
-            <div className="rounded-lg border border-border p-3 grid gap-1">
-              <p className="font-semibold">{c ? `${c.last_name}, ${c.first_name}` : "—"}</p>
-              <p className="text-muted-foreground text-xs">DNI: {c?.dni || "—"}</p>
-              {!editing ? (
-                <>
-                  <p className="text-muted-foreground text-xs">Tel: {c?.phone || "—"}</p>
-                  {c?.address && <p className="text-muted-foreground text-xs">{c.address}</p>}
-                </>
+            <p className="text-xs font-semibold uppercase text-muted-foreground mb-1.5">Trabajo solicitado</p>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="whitespace-pre-wrap leading-relaxed">{envelope.work_description}</p>
+            </div>
+          </section>
+
+          {/* ── 3. ACCIONES DISPONIBLES ── */}
+          {!editing && availableActions.length > 0 && (
+            <section>
+              <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Acciones disponibles</p>
+              {!activeAction ? (
+                <div className="grid gap-2">
+                  {/* Acciones primarias */}
+                  {availableActions.filter(a => ACTION_CONFIG[a].variant === "default").map(action => (
+                    <Button
+                      key={action}
+                      className="h-11 justify-start gap-3"
+                      onClick={() => { resetActionForm(); setActiveAction(action) }}
+                    >
+                      <span className="text-lg leading-none">{ACTION_CONFIG[action].icon}</span>
+                      {ACTION_CONFIG[action].label}
+                    </Button>
+                  ))}
+                  {/* Acciones secundarias */}
+                  {availableActions.filter(a => ACTION_CONFIG[a].variant === "outline").map(action => (
+                    <Button
+                      key={action}
+                      variant="outline"
+                      className="h-10 justify-start gap-3"
+                      onClick={() => { resetActionForm(); setActiveAction(action) }}
+                    >
+                      <span className="text-base leading-none">{ACTION_CONFIG[action].icon}</span>
+                      {ACTION_CONFIG[action].label}
+                    </Button>
+                  ))}
+                  {/* Acciones destructivas */}
+                  {availableActions.filter(a => ACTION_CONFIG[a].variant === "destructive").length > 0 && (
+                    <div className="pt-1 border-t border-border mt-1">
+                      {availableActions.filter(a => ACTION_CONFIG[a].variant === "destructive").map(action => (
+                        <Button
+                          key={action}
+                          variant="ghost"
+                          size="sm"
+                          className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => { resetActionForm(); setActiveAction(action) }}
+                        >
+                          <span>{ACTION_CONFIG[action].icon}</span>
+                          {ACTION_CONFIG[action].label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ) : (
-                <div className="grid gap-2 mt-1">
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Teléfono</Label>
-                    <Input value={editPhone} onChange={e => setEditPhone(e.target.value)} className="h-8 text-sm" placeholder="11-1234-5678" />
+                <div className="rounded-xl border border-border bg-muted/30 p-4 grid gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl leading-none">{ACTION_CONFIG[activeAction].icon}</span>
+                    <p className="font-semibold">{ACTION_CONFIG[activeAction].label}</p>
                   </div>
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Domicilio</Label>
-                    <Input value={editAddress} onChange={e => setEditAddress(e.target.value)} className="h-8 text-sm" placeholder="Av. Corrientes 123" />
+
+                  {activeAction === "send_to_jeweler" && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Joyero <span className="text-muted-foreground">(Opcional)</span></Label>
+                      <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
+                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sin asignar</SelectItem>
+                          {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {activeAction === "transfer" && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Destino <span className="text-destructive">*</span></Label>
+                      <Select value={actionWarehouseId || "none"} onValueChange={v => setActionWarehouseId(v === "none" ? "" : v)}>
+                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Seleccionar local..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Seleccionar...</SelectItem>
+                          {warehouses.filter(w => w.is_active && w.id !== envelope.current_warehouse_id)
+                            .map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {activeAction === "inform_quote" && (
+                    <>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Monto <span className="text-muted-foreground">(Opcional)</span></Label>
+                        <Input type="number" value={actionQuoteAmount} onChange={e => setActionQuoteAmount(e.target.value)}
+                          className="h-9 text-sm" placeholder="25000" min="0" step="0.01" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Detalle <span className="text-muted-foreground">(Opcional)</span></Label>
+                        <Input value={actionQuoteNotes} onChange={e => setActionQuoteNotes(e.target.value)}
+                          className="h-9 text-sm" placeholder="Ej: Cambio de cierre + soldadura" />
+                      </div>
+                    </>
+                  )}
+
+                  {activeAction === "deliver" && (
+                    <>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Entregado a <span className="text-destructive">*</span></Label>
+                        <Input value={actionDeliveredBy} onChange={e => setActionDeliveredBy(e.target.value)}
+                          className="h-9 text-sm" placeholder="Nombre y apellido" />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Observaciones <span className="text-muted-foreground">(Opcional)</span></Label>
+                        <Input value={actionDeliveryNotes} onChange={e => setActionDeliveryNotes(e.target.value)}
+                          className="h-9 text-sm" placeholder="Ej: Retirado con DNI 12345678" />
+                      </div>
+                    </>
+                  )}
+
+                  {(activeAction === "cancel_envelope" || activeAction === "reject_quote") && (
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Motivo <span className="text-muted-foreground">(Opcional)</span></Label>
+                      <Input value={actionNote} onChange={e => setActionNote(e.target.value)} className="h-9 text-sm"
+                        placeholder={activeAction === "reject_quote" ? "Ej: El cliente no acepta el precio" : "Ej: El cliente desistió"} />
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="outline" size="sm" onClick={() => { setActiveAction(null); resetActionForm() }}>
+                      Cancelar
+                    </Button>
+                    <Button size="sm"
+                      disabled={actionSaving ||
+                        (activeAction === "transfer" && !actionWarehouseId) ||
+                        (activeAction === "deliver" && !actionDeliveredBy.trim())}
+                      onClick={handleAction}>
+                      {actionSaving ? "Guardando..." : "Confirmar"}
+                    </Button>
                   </div>
                 </div>
               )}
-            </div>
-          </section>
+            </section>
+          )}
 
-          {/* Recepción — histórico */}
-          <section className="grid grid-cols-2 gap-2">
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">Local receptor</p>
-              <p className="font-medium">{envelope.received_warehouse?.name || "—"}</p>
-            </div>
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">Fecha recepción</p>
-              <p className="font-medium">{formatDate(envelope.received_at)}</p>
-            </div>
-            {envelope.received_by_employee && (
-              <div className="rounded-lg border border-border p-3 col-span-2">
-                <p className="text-xs text-muted-foreground">Recibido por</p>
-                <p className="font-medium">{envelope.received_by_employee.name}</p>
-              </div>
-            )}
-          </section>
+          {/* ── 4. TRAZABILIDAD OCA-STYLE ── */}
+          {!editing && (
+            <section>
+              <Separator className="mb-4" />
+              <p className="text-xs font-semibold uppercase text-muted-foreground mb-4">Historial</p>
+              {eventsLoading ? (
+                <p className="text-xs text-muted-foreground">Cargando historial...</p>
+              ) : reversedEvents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Sin eventos registrados.</p>
+              ) : (
+                <div>
+                  {reversedEvents.map((event, i) => (
+                    <div key={event.id} className="flex gap-3 relative">
+                      {/* Línea vertical conectora */}
+                      {i < reversedEvents.length - 1 && (
+                        <div className="absolute left-[15px] top-9 bottom-0 w-px bg-border z-0" />
+                      )}
+                      {/* Círculo con icono */}
+                      <div className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-sm shrink-0 mt-0.5 border
+                        ${i === 0
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm ring-4 ring-primary/15"
+                          : "bg-background border-border text-muted-foreground"}`}>
+                        {EVENT_ICONS[event.event_type] || "·"}
+                      </div>
+                      {/* Contenido del evento */}
+                      <div className="pb-5 min-w-0 flex-1">
+                        <p className={`font-semibold leading-snug ${i === 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                          {event.title}
+                        </p>
+                        {event.detail && (
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{event.detail}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground/60 mt-1">
+                          {formatDateTime(event.created_at)}
+                          {event.created_by && event.created_by !== "Sistema"
+                            ? ` · ${event.created_by}`
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
-          {/* Artículo — histórico */}
+          {/* ── 5. DATOS SECUNDARIOS ── */}
+          <Separator />
+
+          {/* Corregir datos */}
+          {!activeAction && (
+            <div className="flex gap-2">
+              {!editing ? (
+                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditing(true)}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Corregir datos
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancelar</Button>
+                  <Button size="sm" onClick={handleSaveEdits} disabled={saving}>
+                    {saving ? "Guardando..." : "Guardar"}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Artículo */}
           <section>
-            <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Artículo</p>
+            <p className="text-xs font-semibold uppercase text-muted-foreground mb-1.5">Artículo</p>
             <div className="rounded-lg border border-border p-3 grid gap-1">
               <p className="font-semibold">
                 {envelope.product_type === "jewelry" ? "Joyería" : "Relojería"}
@@ -1052,7 +1259,9 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
                     </p>
                   )}
                   <p className="text-muted-foreground text-xs">Estado: {CONDITION_LABELS[envelope.product_condition]}</p>
-                  {envelope.product_condition_notes && <p className="text-muted-foreground text-xs">{envelope.product_condition_notes}</p>}
+                  {envelope.product_condition_notes && (
+                    <p className="text-muted-foreground text-xs">{envelope.product_condition_notes}</p>
+                  )}
                   {envelope.purchased_at_store && (
                     <p className="text-green-600 dark:text-green-400 text-xs">
                       ✓ Comprado en Santarelli{envelope.purchase_date ? ` el ${formatDate(envelope.purchase_date)}` : ""}
@@ -1090,244 +1299,96 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
             </div>
           </section>
 
-          {/* Trabajo — histórico */}
+          {/* Joyero / Fecha estimada / Notas internas */}
+          {(envelope.jeweler || envelope.estimated_ready_date || editing) && (
+            <section>
+              <p className="text-xs font-semibold uppercase text-muted-foreground mb-1.5">Asignación</p>
+              <div className="rounded-lg border border-border p-3 grid gap-1.5">
+                {envelope.jeweler && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-xs">Joyero</span>
+                    <span className="font-medium">{envelope.jeweler.name}</span>
+                  </div>
+                )}
+                {!editing ? (
+                  <>
+                    {envelope.estimated_ready_date && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground text-xs">Fecha estimada</span>
+                        <span className="font-medium">{formatDate(envelope.estimated_ready_date)}</span>
+                      </div>
+                    )}
+                    {envelope.internal_notes && (
+                      <div className="grid gap-0.5 pt-1 border-t border-border mt-0.5">
+                        <span className="text-muted-foreground text-xs">Notas internas</span>
+                        <span className="text-muted-foreground">{envelope.internal_notes}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="grid gap-2 pt-1 border-t border-border mt-0.5">
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Fecha estimada de entrega</Label>
+                      <Input type="date" value={editEstimatedReadyDate} onChange={e => setEditEstimatedReadyDate(e.target.value)} className="h-8 text-sm" />
+                    </div>
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Notas internas</Label>
+                      <Textarea value={editInternalNotes} onChange={e => setEditInternalNotes(e.target.value)} rows={2} className="text-sm" placeholder="Solo visible internamente..." />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Cliente */}
           <section>
-            <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Trabajo solicitado</p>
+            <p className="text-xs font-semibold uppercase text-muted-foreground mb-1.5">Cliente</p>
+            <div className="rounded-lg border border-border p-3 grid gap-1">
+              <p className="font-semibold">{c ? `${c.last_name}, ${c.first_name}` : "—"}</p>
+              <p className="text-muted-foreground text-xs">DNI: {c?.dni || "—"}</p>
+              {!editing ? (
+                <>
+                  <p className="text-muted-foreground text-xs">Tel: {c?.phone || "—"}</p>
+                  {c?.address && <p className="text-muted-foreground text-xs">{c.address}</p>}
+                </>
+              ) : (
+                <div className="grid gap-2 mt-1">
+                  <div className="grid gap-1">
+                    <Label className="text-xs">Teléfono</Label>
+                    <Input value={editPhone} onChange={e => setEditPhone(e.target.value)} className="h-8 text-sm" placeholder="11-1234-5678" />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-xs">Domicilio</Label>
+                    <Input value={editAddress} onChange={e => setEditAddress(e.target.value)} className="h-8 text-sm" placeholder="Av. Corrientes 123" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Recepción */}
+          <section className="grid grid-cols-2 gap-2 pb-2">
             <div className="rounded-lg border border-border p-3">
-              <p className="whitespace-pre-wrap">{envelope.work_description}</p>
+              <p className="text-xs text-muted-foreground">Local receptor</p>
+              <p className="font-medium">{envelope.received_warehouse?.name || "—"}</p>
             </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">Fecha recepción</p>
+              <p className="font-medium">{formatDate(envelope.received_at)}</p>
+            </div>
+            {envelope.received_by_employee && (
+              <div className="rounded-lg border border-border p-3 col-span-2">
+                <p className="text-xs text-muted-foreground">Recibido por</p>
+                <p className="font-medium">{envelope.received_by_employee.name}</p>
+              </div>
+            )}
           </section>
 
-          {/* Asignación y presupuesto — solo lectura */}
-          <section>
-            <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Asignación y presupuesto</p>
-            <div className="rounded-lg border border-border p-3 grid gap-1.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground text-xs">Joyero</span>
-                <span className="text-sm font-medium">{envelope.jeweler?.name || "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground text-xs">Presupuesto</span>
-                <span className="text-sm font-medium">{QUOTE_STATUS_LABELS[envelope.quote_status]}</span>
-              </div>
-              {envelope.quote_amount != null && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground text-xs">Monto</span>
-                  <span className="text-sm font-semibold">${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                </div>
-              )}
-              {envelope.quote_notes && (
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground text-xs shrink-0">Detalle</span>
-                  <span className="text-sm text-right">{envelope.quote_notes}</span>
-                </div>
-              )}
-              {!editing ? (
-                <>
-                  {envelope.estimated_ready_date && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground text-xs">Fecha estimada</span>
-                      <span className="text-sm font-medium">{formatDate(envelope.estimated_ready_date)}</span>
-                    </div>
-                  )}
-                  {envelope.internal_notes && (
-                    <div className="flex justify-between gap-4 pt-0.5 border-t border-border mt-0.5">
-                      <span className="text-muted-foreground text-xs shrink-0">Notas internas</span>
-                      <span className="text-sm text-right text-muted-foreground">{envelope.internal_notes}</span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="grid gap-2 pt-1 border-t border-border mt-0.5">
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Fecha estimada de entrega</Label>
-                    <Input type="date" value={editEstimatedReadyDate} onChange={e => setEditEstimatedReadyDate(e.target.value)} className="h-8 text-sm" />
-                  </div>
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Notas internas</Label>
-                    <Textarea value={editInternalNotes} onChange={e => setEditInternalNotes(e.target.value)} rows={2} className="text-sm" placeholder="Solo visible internamente..." />
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Corrección de datos */}
-          {!activeAction && (
-            <div className="flex gap-2">
-              {!editing ? (
-                <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Corregir datos
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancelar</Button>
-                  <Button size="sm" onClick={handleSaveEdits} disabled={saving}>
-                    {saving ? "Guardando..." : "Guardar"}
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Trazabilidad */}
-          {!editing && (
-            <section>
-              <Separator className="my-1" />
-              <p className="text-xs font-semibold uppercase text-muted-foreground mb-2 mt-1">Trazabilidad</p>
-              {eventsLoading ? (
-                <p className="text-xs text-muted-foreground">Cargando historial...</p>
-              ) : events.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Sin eventos registrados.</p>
-              ) : (
-                <div className="space-y-0">
-                  {[...events].reverse().map((event, i) => (
-                    <div key={event.id} className="flex gap-3">
-                      <div className="flex flex-col items-center shrink-0">
-                        <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs shrink-0 mt-0.5
-                          ${i === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                          {EVENT_ICONS[event.event_type] || "•"}
-                        </div>
-                        {i < events.length - 1 && <div className="w-px flex-1 bg-border min-h-[12px]" />}
-                      </div>
-                      <div className="pb-3 min-w-0">
-                        <p className={`text-sm font-medium ${i === 0 ? "text-foreground" : "text-muted-foreground"}`}>
-                          {event.title}
-                        </p>
-                        {event.detail && <p className="text-xs text-muted-foreground">{event.detail}</p>}
-                        <p className="text-xs text-muted-foreground/70 mt-0.5">{formatDateTime(event.created_at)}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* Acciones operativas */}
-          {!editing && availableActions.length > 0 && (
-            <section>
-              <Separator className="my-1" />
-              <p className="text-xs font-semibold uppercase text-muted-foreground mb-2 mt-1">Acciones</p>
-              {!activeAction ? (
-                <div className="flex flex-wrap gap-2">
-                  {availableActions.map(action => (
-                    <Button
-                      key={action}
-                      size="sm"
-                      variant={ACTION_CONFIG[action].variant}
-                      onClick={() => { resetActionForm(); setActiveAction(action) }}
-                    >
-                      <span className="mr-1.5">{ACTION_CONFIG[action].icon}</span>
-                      {ACTION_CONFIG[action].label}
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-border bg-muted/30 p-3 grid gap-3">
-                  <p className="text-sm font-semibold">
-                    {ACTION_CONFIG[activeAction].icon} {ACTION_CONFIG[activeAction].label}
-                  </p>
-
-                  {/* Enviar a Joyero */}
-                  {activeAction === "send_to_jeweler" && (
-                    <div className="grid gap-1.5">
-                      <Label className="text-xs">Joyero <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-                      <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
-                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Sin asignar</SelectItem>
-                          {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {/* Transferir */}
-                  {activeAction === "transfer" && (
-                    <div className="grid gap-1.5">
-                      <Label className="text-xs">Destino <span className="text-destructive">*</span></Label>
-                      <Select value={actionWarehouseId || "none"} onValueChange={v => setActionWarehouseId(v === "none" ? "" : v)}>
-                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Seleccionar local..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Seleccionar...</SelectItem>
-                          {warehouses
-                            .filter(w => w.is_active && w.id !== envelope.current_warehouse_id)
-                            .map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {/* Informar presupuesto */}
-                  {activeAction === "inform_quote" && (
-                    <>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Monto <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-                        <Input type="number" value={actionQuoteAmount} onChange={e => setActionQuoteAmount(e.target.value)}
-                          className="h-8 text-sm" placeholder="25000" min="0" step="0.01" />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Detalle <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-                        <Input value={actionQuoteNotes} onChange={e => setActionQuoteNotes(e.target.value)}
-                          className="h-8 text-sm" placeholder="Ej: Cambio de cierre + soldadura" />
-                      </div>
-                    </>
-                  )}
-
-                  {/* Entregar */}
-                  {activeAction === "deliver" && (
-                    <>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Entregado a <span className="text-destructive">*</span></Label>
-                        <Input value={actionDeliveredBy} onChange={e => setActionDeliveredBy(e.target.value)}
-                          className="h-8 text-sm" placeholder="Nombre y apellido" />
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label className="text-xs">Observaciones <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-                        <Input value={actionDeliveryNotes} onChange={e => setActionDeliveryNotes(e.target.value)}
-                          className="h-8 text-sm" placeholder="Ej: Retirado con DNI 12345678" />
-                      </div>
-                    </>
-                  )}
-
-                  {/* Cancelar / Rechazar presupuesto */}
-                  {(activeAction === "cancel_envelope" || activeAction === "reject_quote") && (
-                    <div className="grid gap-1.5">
-                      <Label className="text-xs">Motivo <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-                      <Input value={actionNote} onChange={e => setActionNote(e.target.value)}
-                        className="h-8 text-sm"
-                        placeholder={activeAction === "reject_quote" ? "Ej: El cliente no acepta el precio" : "Ej: El cliente desistió"} />
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { setActiveAction(null); resetActionForm() }}>
-                      Cancelar
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={
-                        actionSaving ||
-                        (activeAction === "transfer" && !actionWarehouseId) ||
-                        (activeAction === "deliver" && !actionDeliveredBy.trim())
-                      }
-                      onClick={handleAction}
-                    >
-                      {actionSaving ? "Guardando..." : "Confirmar"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
         </div>
 
-        <DialogFooter className="gap-2 mt-2">
-          <Button variant="outline" onClick={() => onPrint(envelope)}>
-            <Printer className="mr-1.5 h-4 w-4" /> Imprimir
-          </Button>
-          <Button onClick={onClose}>Cerrar</Button>
+        <DialogFooter className="mt-2">
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1428,7 +1489,7 @@ export default function SobresPage() {
                   <TableHead>Artículo</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Presupuesto</TableHead>
-                  <TableHead>Recibido</TableHead>
+                  <TableHead>Ubicación</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1462,7 +1523,12 @@ export default function SobresPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(e.received_at)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          {getEnvelopeLocation(e)}
+                        </div>
+                      </TableCell>
                       <TableCell><ChevronRight className="h-4 w-4 text-muted-foreground" /></TableCell>
                     </TableRow>
                   )
