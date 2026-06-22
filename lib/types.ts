@@ -81,6 +81,7 @@ export interface Envelope {
   // Joined
   customer?: Customer
   received_warehouse?: { id: string; name: string }
+  current_warehouse?: { id: string; name: string }
   jeweler?: Jeweler
   received_by_employee?: Employee
   product_subtype?: EnvelopeSubtype

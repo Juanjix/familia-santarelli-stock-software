@@ -267,9 +267,8 @@ function getEnvelopeLocation(envelope: Envelope): string {
   if (envelope.status === "in_workshop") {
     return envelope.jeweler?.name ? `Taller — ${envelope.jeweler.name}` : "En taller"
   }
-  // Usar current_warehouse si difiere, sino received_warehouse
-  const w = (envelope as Envelope & { current_warehouse?: { name: string } }).current_warehouse
-  return envelope.received_warehouse?.name || "—"
+  // Usar current_warehouse si está seteado, sino caer a received_warehouse
+  return envelope.current_warehouse?.name || envelope.received_warehouse?.name || "—"
 }
 
 // Emoji / icono por tipo de evento
@@ -1550,7 +1549,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
 const ALL_STATUSES: EnvelopeStatus[] = ["received", "quote_pending", "quote_approved", "in_workshop", "ready", "delivered", "cancelled"]
 
 export default function SobresPage() {
-  const { fetchEnvelopes, updateEnvelope, updateCustomer } = useInventory()
+  const { fetchEnvelopes, updateEnvelope, updateCustomer, warehouses, jewelers } = useInventory()
   const [envelopes, setEnvelopes] = useState<Envelope[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -1589,13 +1588,27 @@ export default function SobresPage() {
   const handleUpdated = useCallback(async (id: string, updates: Partial<Envelope>, statusNote?: string, createdBy?: string) => {
     await updateEnvelope(id, updates, statusNote, createdBy)
 
+    // Si cambió el local actual, también actualizamos el objeto joined localmente
+    // para que la ubicación se refleje al instante sin esperar un refetch.
+    const patch: Partial<Envelope> = { ...updates }
+    if ('current_warehouse_id' in updates) {
+      patch.current_warehouse = updates.current_warehouse_id
+        ? warehouses.find(w => w.id === updates.current_warehouse_id) || undefined
+        : undefined
+    }
+    if ('jeweler_id' in updates) {
+      patch.jeweler = updates.jeweler_id
+        ? jewelers.find(j => j.id === updates.jeweler_id) || undefined
+        : undefined
+    }
+
     // Also update customer phone/address if those were passed (not directly in envelope)
     // Note: phone/address live on the customer record, but we pass them through the edit handler
     // The edit handler in the detail dialog calls updateCustomer separately if needed.
     // Here we just merge into local state.
-    setEnvelopes(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e))
-    setDetailEnvelope(prev => prev && prev.id === id ? { ...prev, ...updates } : prev)
-  }, [updateEnvelope])
+    setEnvelopes(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))
+    setDetailEnvelope(prev => prev && prev.id === id ? { ...prev, ...patch } : prev)
+  }, [updateEnvelope, warehouses, jewelers])
 
   const activeCounts = envelopes.filter(e => !["delivered", "cancelled"].includes(e.status)).length
 

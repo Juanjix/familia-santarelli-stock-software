@@ -738,6 +738,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     *,
     customer:customers(id, first_name, last_name, dni, phone, address, created_at, updated_at),
     received_warehouse:warehouses!received_warehouse_id(id, name),
+    current_warehouse:warehouses!current_warehouse_id(id, name),
     jeweler:jewelers(id, name, is_active, created_at, updated_at),
     received_by_employee:employees(id, name, is_active, created_at, updated_at),
     product_subtype:envelope_subtypes(id, name, product_type, is_active, sort_order, created_at)
