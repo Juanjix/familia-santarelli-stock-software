@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
+import JsBarcode from "jsbarcode"
 import { useInventory } from "@/lib/inventory-context"
+import type { Product, Category, CategoryAttribute } from "@/lib/types"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,18 +25,88 @@ import {
 } from "@/components/ui/dialog"
 import { Search, Printer, Tags, Barcode } from "lucide-react"
 
-// Label physical dimensions (thermoprint roll: 56mm × 25mm)
-const LABEL_W_MM = 56
-const LABEL_H_MM = 25
+// Etiqueta física real utilizada por la joyería (ver plano técnico): banda
+// horizontal angosta, NO el formato vertical 56×25mm usado anteriormente.
+const LABEL_W_MM = 80
+const LABEL_H_MM = 10
 
-// Real label using Libre Barcode 128 font — matches the print output exactly
-function LabelPreview({ product, scale = 3.5 }: {
+const BARCODE_OPTIONS = {
+  format: "CODE128",
+  width: 2,
+  height: 60,
+  displayValue: false,
+  margin: 0,
+  background: "#ffffff",
+  lineColor: "#000000",
+} as const
+
+// Atributo principal de un producto según su categoría (Talle, Largo, etc).
+// Regla: si el atributo es numérico (ej. Talle) se antepone su label
+// ("Talle 16"); si es texto libre (ej. Largo, donde el operador ya tipea
+// "45 cm") se imprime el valor solo, sin duplicar la unidad.
+function getPrimaryAttributeText(
+  product: Product,
+  categories: Category[],
+  categoryAttributes: CategoryAttribute[]
+): string | null {
+  if (!product.attributes) return null
+  const cat = product.category_id
+    ? categories.find(c => c.id === product.category_id)
+    : categories.find(c => c.name === product.category)
+  if (!cat) return null
+
+  const attrs = categoryAttributes
+    .filter(a => a.category_id === cat.id && a.is_active)
+    .sort((a, b) => a.sort_order - b.sort_order)
+  if (attrs.length === 0) return null
+
+  const primary = attrs[0]
+  const value = product.attributes[primary.key]
+  if (!value) return null
+
+  return primary.input_type === "number" ? `${primary.label} ${value}` : value
+}
+
+// Genera el barcode real (Code128) como dataURL PNG, reutilizable tanto en
+// el preview (canvas en pantalla) como en la impresión (img embebida).
+function barcodeToDataURL(code: string): string | null {
+  if (!code) return null
+  const canvas = document.createElement("canvas")
+  try {
+    JsBarcode(canvas, code, BARCODE_OPTIONS)
+    return canvas.toDataURL("image/png")
+  } catch {
+    return null
+  }
+}
+
+// Barcode renderizado en vivo para el preview — misma librería y mismas
+// opciones que la impresión: una única fuente de verdad.
+function BarcodeCanvas({ code, className }: { code: string; className?: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    if (!canvasRef.current || !code) return
+    try {
+      JsBarcode(canvasRef.current, code, BARCODE_OPTIONS)
+    } catch {
+      // código inválido para Code128 — se deja el canvas vacío
+    }
+  }, [code])
+
+  if (!code) return <span className="text-xs text-muted-foreground">Sin código</span>
+  return <canvas ref={canvasRef} className={className} />
+}
+
+// Vista previa a escala — banda horizontal: SKU | Atributo | Barcode.
+// Layout y proporciones idénticas a lo que se imprime.
+function LabelPreview({ product, attributeText, scale = 6 }: {
   product: { sku: string; barcode: string | null; internal_code?: string | null }
+  attributeText: string | null
   scale?: number
 }) {
   const code = product.barcode || ""
   const identifier = (product.internal_code || product.sku || "").toUpperCase()
-
   const w = LABEL_W_MM * scale
   const h = LABEL_H_MM * scale
 
@@ -43,11 +115,10 @@ function LabelPreview({ product, scale = 3.5 }: {
       style={{
         width: `${w}px`,
         height: `${h}px`,
-        padding: `${1.5 * scale}px ${2 * scale}px`,
+        padding: `${0.5 * scale}px ${1.5 * scale}px`,
         display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
         alignItems: "center",
+        gap: `${1.5 * scale}px`,
         border: "1px solid #e2e8f0",
         background: "#ffffff",
         boxSizing: "border-box",
@@ -55,77 +126,56 @@ function LabelPreview({ product, scale = 3.5 }: {
         overflow: "hidden",
       }}
     >
-      {/* Top: identifier */}
       <div style={{
-        fontSize: `${7 * scale / 3.5}px`,
+        fontSize: `${7 * scale / 6}px`,
         fontWeight: 700,
-        letterSpacing: "0.5px",
-        textTransform: "uppercase",
+        letterSpacing: "0.3px",
         color: "#000",
-        width: "100%",
-        textAlign: "center",
         lineHeight: 1,
         flexShrink: 0,
+        maxWidth: `${28 * scale}px`,
+        overflow: "hidden",
+        whiteSpace: "nowrap",
       }}>
         {identifier}
       </div>
 
-      {/* Center: barcode */}
+      {attributeText && (
+        <div style={{
+          fontSize: `${6.5 * scale / 6}px`,
+          fontWeight: 600,
+          color: "#000",
+          lineHeight: 1,
+          flexShrink: 0,
+          maxWidth: `${22 * scale}px`,
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+        }}>
+          {attributeText}
+        </div>
+      )}
+
       <div style={{
         flex: 1,
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
-        width: "100%",
+        justifyContent: "flex-end",
+        height: "100%",
+        minWidth: 0,
         overflow: "hidden",
-        minHeight: 0,
       }}>
-        <div style={{
-          fontFamily: "'Libre Barcode 128', monospace",
-          fontSize: `${28 * scale / 3.5}px`,
-          lineHeight: 1,
-          color: "#000",
-          whiteSpace: "nowrap",
-          maxWidth: "100%",
-        }}>
-          {code ? `*${code}*` : "*000000000000*"}
-        </div>
-      </div>
-
-      {/* Bottom: barcode number */}
-      <div style={{
-        fontSize: `${6.5 * scale / 3.5}px`,
-        fontFamily: "monospace",
-        letterSpacing: "1px",
-        color: "#000",
-        width: "100%",
-        textAlign: "center",
-        lineHeight: 1,
-        flexShrink: 0,
-      }}>
-        {code || "—"}
+        <BarcodeCanvas code={code} className="h-full w-auto" />
       </div>
     </div>
   )
 }
 
 export default function LabelsPage() {
-  const { products } = useInventory()
+  const { products, categories, categoryAttributes } = useInventory()
   const [search, setSearch] = useState("")
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [quantities, setQuantities] = useState<Map<string, number>>(new Map())
-  const [previewProduct, setPreviewProduct] = useState<typeof products[0] | null>(null)
-  const [fontLoaded, setFontLoaded] = useState(false)
-
-  // Load Libre Barcode 128 font so preview matches print output
-  useEffect(() => {
-    const link = document.createElement("link")
-    link.rel = "stylesheet"
-    link.href = "https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap"
-    link.onload = () => setFontLoaded(true)
-    document.head.appendChild(link)
-    return () => { document.head.removeChild(link) }
-  }, [])
+  const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
 
   // Only show products that have a barcode (required to print)
   const filteredProducts = useMemo(() => {
@@ -175,29 +225,40 @@ export default function LabelsPage() {
     return total
   }
 
-  const handlePrint = () => {
-    const selectedProductsList = products.filter(p => selectedProducts.has(p.id) && p.barcode)
-    if (selectedProductsList.length === 0) return
+  const handlePrint = (productsOverride?: Product[]) => {
+    const list = productsOverride || products.filter(p => selectedProducts.has(p.id) && p.barcode)
+    if (list.length === 0) return
 
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
+    // Una sola renderización de barcode por código único (evita trabajo repetido si quantity > 1)
+    const barcodeCache = new Map<string, string | null>()
+    const getBarcodeDataURL = (code: string) => {
+      if (!barcodeCache.has(code)) barcodeCache.set(code, barcodeToDataURL(code))
+      return barcodeCache.get(code) || null
+    }
 
     let labelsHtml = ""
-    selectedProductsList.forEach(product => {
-      const quantity = quantities.get(product.id) || 1
+    list.forEach(product => {
+      const quantity = productsOverride ? 1 : (quantities.get(product.id) || 1)
       const identifier = ((product.internal_code || product.sku) || "").toUpperCase()
       const code = product.barcode || ""
+      const attributeText = getPrimaryAttributeText(product, categories, categoryAttributes)
+      const barcodeSrc = getBarcodeDataURL(code)
 
       for (let i = 0; i < quantity; i++) {
         labelsHtml += `
           <div class="label">
             <div class="label-id">${identifier}</div>
-            <div class="label-barcode">*${code}*</div>
-            <div class="label-num">${code}</div>
+            ${attributeText ? `<div class="label-attr">${attributeText}</div>` : ""}
+            <div class="label-barcode">
+              ${barcodeSrc ? `<img src="${barcodeSrc}" alt="${code}" />` : ""}
+            </div>
           </div>
         `
       }
     })
+
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -205,82 +266,71 @@ export default function LabelsPage() {
         <head>
           <meta charset="UTF-8">
           <title>Etiquetas — Santarelli</title>
-          <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
 
             @page {
-              size: auto;
-              margin: 4mm;
+              size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm;
+              margin: 0;
             }
 
-            body {
-              font-family: Arial, sans-serif;
-              background: #fff;
-            }
-
-            .labels-container {
-              display: flex;
-              flex-wrap: wrap;
-              gap: 2mm;
-            }
+            body { font-family: Arial, sans-serif; background: #fff; }
 
             .label {
               width: ${LABEL_W_MM}mm;
               height: ${LABEL_H_MM}mm;
-              padding: 1.5mm 2mm;
+              padding: 0.5mm 1.5mm;
               display: flex;
-              flex-direction: column;
-              justify-content: space-between;
               align-items: center;
+              gap: 1.5mm;
               overflow: hidden;
-              page-break-inside: avoid;
+              page-break-after: always;
             }
+            .label:last-child { page-break-after: avoid; }
 
             .label-id {
-              font-size: 7pt;
+              font-size: 7.5pt;
               font-weight: 700;
-              letter-spacing: 0.5px;
-              text-transform: uppercase;
+              letter-spacing: 0.3px;
               color: #000;
-              text-align: center;
               line-height: 1;
-              width: 100%;
+              flex-shrink: 0;
+              max-width: 26mm;
+              overflow: hidden;
+              white-space: nowrap;
+            }
+
+            .label-attr {
+              font-size: 7pt;
+              font-weight: 600;
+              color: #000;
+              line-height: 1;
+              flex-shrink: 0;
+              max-width: 20mm;
+              overflow: hidden;
+              white-space: nowrap;
             }
 
             .label-barcode {
               flex: 1;
               display: flex;
               align-items: center;
-              justify-content: center;
-              width: 100%;
+              justify-content: flex-end;
+              height: 100%;
+              min-width: 0;
               overflow: hidden;
-              font-family: 'Libre Barcode 128', monospace;
-              font-size: 28pt;
-              line-height: 1;
-              color: #000;
-              text-align: center;
             }
-
-            .label-num {
-              font-size: 6.5pt;
-              font-family: monospace;
-              letter-spacing: 1px;
-              color: #000;
-              text-align: center;
-              line-height: 1;
-              width: 100%;
+            .label-barcode img {
+              height: 100%;
+              width: auto;
+              max-width: 100%;
+              object-fit: contain;
             }
           </style>
         </head>
         <body>
-          <div class="labels-container">
-            ${labelsHtml}
-          </div>
-          <script>
-            // Wait for font before printing
-            document.fonts.ready.then(() => { window.print(); });
-          </script>
+          ${labelsHtml}
+          <script>window.print();</script>
         </body>
       </html>
     `)
@@ -309,7 +359,7 @@ export default function LabelsPage() {
                 {selectedProducts.size} seleccionados · {getTotalLabels()} etiquetas
               </Badge>
             )}
-            <Button onClick={handlePrint} disabled={selectedProducts.size === 0}>
+            <Button onClick={() => handlePrint()} disabled={selectedProducts.size === 0}>
               <Printer className="mr-2 h-4 w-4" />
               Imprimir
             </Button>
@@ -334,6 +384,7 @@ export default function LabelsPage() {
                 </TableHead>
                 <TableHead>Producto</TableHead>
                 <TableHead>Identificador</TableHead>
+                <TableHead>Atributo</TableHead>
                 <TableHead>Código de Barras</TableHead>
                 <TableHead className="w-32 text-center">Cantidad</TableHead>
                 <TableHead className="text-right">Vista previa</TableHead>
@@ -361,6 +412,9 @@ export default function LabelsPage() {
                   </TableCell>
                   <TableCell className="font-mono text-sm font-semibold">
                     {(product.internal_code || product.sku || "").toUpperCase()}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {getPrimaryAttributeText(product, categories, categoryAttributes) || "—"}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -409,7 +463,7 @@ export default function LabelsPage() {
               ))}
               {filteredProducts.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     {search ? "Sin resultados para esa búsqueda." : "No hay productos con código de barras asignado."}
                   </TableCell>
                 </TableRow>
@@ -427,20 +481,21 @@ export default function LabelsPage() {
 
       {/* Label Preview Dialog */}
       <Dialog open={!!previewProduct} onOpenChange={() => setPreviewProduct(null)}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Vista previa — {LABEL_W_MM}×{LABEL_H_MM} mm</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col items-center gap-4 py-4">
-            {!fontLoaded && (
-              <p className="text-xs text-muted-foreground">Cargando fuente de barras...</p>
-            )}
             {previewProduct && (
-              <LabelPreview product={previewProduct} scale={3.5} />
+              <LabelPreview
+                product={previewProduct}
+                attributeText={getPrimaryAttributeText(previewProduct, categories, categoryAttributes)}
+                scale={6}
+              />
             )}
             <p className="text-xs text-muted-foreground text-center">
-              Vista a escala — el impreso usará exactamente este layout
+              Vista a escala con barcode real (Code128) — el impreso usará exactamente este contenido
             </p>
           </div>
 
@@ -449,13 +504,7 @@ export default function LabelsPage() {
               Cerrar
             </Button>
             <Button onClick={() => {
-              if (previewProduct) {
-                setSelectedProducts(new Set([previewProduct.id]))
-                if (!quantities.has(previewProduct.id)) {
-                  setQuantities(new Map(quantities).set(previewProduct.id, 1))
-                }
-                handlePrint()
-              }
+              if (previewProduct) handlePrint([previewProduct])
             }}>
               <Printer className="mr-2 h-4 w-4" />
               Imprimir 1
