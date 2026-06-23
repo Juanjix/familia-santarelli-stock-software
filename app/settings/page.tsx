@@ -353,6 +353,7 @@ export default function SettingsPage() {
   const [employeeDialogActive, setEmployeeDialogActive] = useState(true)
   const [savingEmployee, setSavingEmployee] = useState(false)
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null)
+  const [deleteEmployeeError, setDeleteEmployeeError] = useState<string | null>(null)
 
   const handleSaveEmployee = async () => {
     if (!employeeDialogName.trim()) return
@@ -381,7 +382,12 @@ export default function SettingsPage() {
 
   const handleDeleteEmployee = async () => {
     if (!deletingEmployee) return
-    await deleteEmployee(deletingEmployee.id)
+    setDeleteEmployeeError(null)
+    const result = await deleteEmployee(deletingEmployee.id)
+    if (!result.success) {
+      setDeleteEmployeeError(result.error || "No se pudo eliminar el empleado.")
+      return
+    }
     setDeletingEmployee(null)
   }
 
@@ -1339,7 +1345,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Confirmar eliminar empleado */}
-          <AlertDialog open={!!deletingEmployee} onOpenChange={(open) => !open && setDeletingEmployee(null)}>
+          <AlertDialog open={!!deletingEmployee} onOpenChange={(open) => { if (!open) { setDeletingEmployee(null); setDeleteEmployeeError(null) } }}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>¿Eliminar empleado?</AlertDialogTitle>
@@ -1347,11 +1353,14 @@ export default function SettingsPage() {
                   Vas a eliminar <strong>{deletingEmployee?.name}</strong>. Los sobres recibidos por este empleado mantendrán el registro histórico.
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              {deleteEmployeeError && (
+                <p className="text-sm text-destructive bg-destructive/10 rounded-md p-2">{deleteEmployeeError}</p>
+              )}
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={handleDeleteEmployee}
+                  onClick={(e) => { e.preventDefault(); handleDeleteEmployee() }}
                 >
                   Eliminar
                 </AlertDialogAction>

@@ -117,7 +117,7 @@ interface InventoryContextType {
   deleteJeweler: (id: string) => Promise<void>
   addEmployee: (name: string) => Promise<Employee | null>
   updateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>
-  deleteEmployee: (id: string) => Promise<void>
+  deleteEmployee: (id: string) => Promise<{ success: boolean; error?: string }>
   fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
   createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id'>) => Promise<Envelope | null>
   updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, createdBy?: string) => Promise<void>
@@ -754,10 +754,17 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates, updated_at: new Date().toISOString() } : e))
   }, [supabase])
 
-  const deleteEmployee = useCallback(async (id: string): Promise<void> => {
+  const deleteEmployee = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
     const { error } = await supabase.from("employees").delete().eq("id", id)
-    if (error) { console.error("Error deleting employee:", error); return }
+    if (error) {
+      console.error("Error deleting employee:", error)
+      const friendly = error.code === "23503"
+        ? "No se puede eliminar: hay sobres registrados con este empleado."
+        : error.message
+      return { success: false, error: friendly }
+    }
     setEmployees(prev => prev.filter(e => e.id !== id))
+    return { success: true }
   }, [supabase])
 
   // ── Envelopes (fetched on demand, not in global state) ─
