@@ -95,7 +95,15 @@ interface InventoryContextType {
   addCategoryAttribute: (attr: Partial<CategoryAttribute>) => Promise<CategoryAttribute | null>
   updateCategoryAttribute: (id: string, updates: Partial<CategoryAttribute>) => Promise<void>
   deleteCategoryAttribute: (id: string) => Promise<void>
-  addCoupon: (coupon: Partial<Coupon>) => Promise<void>
+  addCoupon: (input: {
+    productId: string
+    warehouseId: string
+    amount: number
+    customerName: string
+    customerPhone: string
+    expiresAt?: string | null
+    notes?: string | null
+  }) => Promise<{ success: boolean; error?: string }>
   useCoupon: (id: string) => Promise<void>
   // ── Sobres ────────────────────────────────────────────────
   customers: Customer[]
@@ -473,27 +481,46 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     setSuppliers(prev => prev.filter(s => s.id !== id))
   }, [supabase])
 
-  const addCoupon = useCallback(async (coupon: Partial<Coupon>) => {
-    const { data, error } = await supabase
-      .from("coupons")
-      .insert({
-        code: coupon.code || `CPN-${Date.now()}`,
-        original_product_id: coupon.original_product_id || coupon.productId || null,
-        amount: coupon.amount || coupon.value || 0,
-        is_used: false,
-        expires_at: coupon.expires_at || coupon.expiresAt || null,
-        notes: coupon.notes || null,
-      })
-      .select(`*, original_products:original_product_id(name)`)
-      .single()
-    
+  const addCoupon = useCallback(async (input: {
+    productId: string
+    warehouseId: string
+    amount: number
+    customerName: string
+    customerPhone: string
+    expiresAt?: string | null
+    notes?: string | null
+  }): Promise<{ success: boolean; error?: string }> => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let code = "CUP-"
+    for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
+
+    const { data, error } = await supabase.rpc("issue_exchange_ticket", {
+      p_code: code,
+      p_product_id: input.productId,
+      p_warehouse_id: input.warehouseId,
+      p_amount: input.amount,
+      p_customer_name: input.customerName,
+      p_customer_phone: input.customerPhone,
+      p_expires_at: input.expiresAt || null,
+      p_notes: input.notes || null,
+      p_user_name: "Usuario",
+    })
+
     if (error) {
-      console.error("Error adding coupon:", error)
-      return
+      console.error("Error issuing exchange ticket:", error)
+      return { success: false, error: error.message }
     }
-    
-    setCoupons(prev => [normalizeCoupon(data), ...prev])
-  }, [supabase])
+
+    const { data: full } = await supabase
+      .from("coupons")
+      .select(`*, original_products:original_product_id(name)`)
+      .eq("id", (data as Coupon).id)
+      .single()
+
+    setCoupons(prev => [normalizeCoupon(full || data), ...prev])
+    await refreshData()
+    return { success: true }
+  }, [supabase, refreshData])
 
   const useCoupon = useCallback(async (id: string) => {
     const { error } = await supabase

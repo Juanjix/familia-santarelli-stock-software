@@ -245,6 +245,8 @@ export interface Coupon {
   used_for_product_id: string | null
   expires_at: string | null
   notes: string | null
+  customer_name: string | null
+  customer_phone: string | null
   created_at: string
   // Joined fields
   original_product?: Product
