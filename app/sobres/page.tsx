@@ -292,56 +292,78 @@ function printEnvelope(envelope: Envelope) {
   const condition = CONDITION_LABELS[envelope.product_condition] || envelope.product_condition
   const quoteLabel = QUOTE_STATUS_LABELS[envelope.quote_status]
   const warehouse = envelope.received_warehouse?.name || "—"
+  const articleLine = `${type}${subtype ? ` — ${subtype}` : ""}`
+  const materialLine = envelope.product_material
+    ? `${getMaterialDisplay(envelope.product_material, envelope.product_material_detail)}${envelope.product_material === "ORO" && envelope.product_weight != null ? ` · ${envelope.product_weight}g` : ""}`
+    : null
 
-  const sharedFields = `
-    <div class="row"><span class="label">Número</span><span class="value mono">${envelope.number}</span></div>
-    <div class="row"><span class="label">Cliente</span><span class="value">${fullName}</span></div>
-    <div class="row"><span class="label">DNI</span><span class="value">${c?.dni || "—"}</span></div>
-    <div class="row"><span class="label">Domicilio</span><span class="value">${c?.address || "—"}</span></div>
+  // Bloque de datos compartido entre ambas copias (cliente e interna)
+  const baseFields = `
+    <div class="section">
+      <div class="section-title">Cliente</div>
+      <div class="row"><span class="label">Nombre</span><span class="value">${fullName}</span></div>
+      <div class="row"><span class="label">DNI</span><span class="value">${c?.dni || "—"}</span></div>
+      ${c?.address ? `<div class="row"><span class="label">Domicilio</span><span class="value">${c.address}</span></div>` : ""}
+      ${c?.phone ? `<div class="row"><span class="label">Teléfono</span><span class="value">${c.phone}</span></div>` : ""}
+    </div>
     <div class="divider"></div>
-    <div class="row"><span class="label">Artículo</span><span class="value">${type}${subtype ? ` — ${subtype}` : ""}${envelope.product_material ? ` · ${getMaterialDisplay(envelope.product_material, envelope.product_material_detail)}` : ""}${envelope.product_material === "ORO" && envelope.product_weight != null ? ` · ${envelope.product_weight}g` : ""}</span></div>
-    <div class="row"><span class="label">Estado</span><span class="value">${condition}</span></div>
-    ${envelope.product_condition_notes ? `<div class="row"><span class="label">Obs. estado</span><span class="value">${envelope.product_condition_notes}</span></div>` : ""}
+    <div class="section">
+      <div class="section-title">Artículo</div>
+      <div class="row"><span class="label">Tipo</span><span class="value">${articleLine}</span></div>
+      ${materialLine ? `<div class="row"><span class="label">Material</span><span class="value">${materialLine}</span></div>` : ""}
+      <div class="row"><span class="label">Estado</span><span class="value">${condition}</span></div>
+      ${envelope.product_condition_notes ? `<div class="row"><span class="label">Obs.</span><span class="value">${envelope.product_condition_notes}</span></div>` : ""}
+    </div>
     <div class="divider"></div>
-    <div class="work-label">Trabajo solicitado</div>
-    <div class="work-text">${envelope.work_description}</div>
+    <div class="section work-section">
+      <div class="section-title">Trabajo solicitado</div>
+      <div class="work-text">${envelope.work_description}</div>
+    </div>
     <div class="divider"></div>
-    <div class="row"><span class="label">Presupuesto</span><span class="value">${quoteLabel}</span></div>
-    ${envelope.quote_amount != null ? `<div class="row"><span class="label">Monto</span><span class="value">$${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></div>` : ""}
-    ${envelope.quote_notes ? `<div class="row"><span class="label">Detalle</span><span class="value">${envelope.quote_notes}</span></div>` : ""}
-    <div class="row"><span class="label">Local receptor</span><span class="value">${warehouse}</span></div>
-    <div class="row"><span class="label">Recibido por</span><span class="value">${envelope.received_by_employee?.name || "—"}</span></div>
-    <div class="row"><span class="label">Fecha recepción</span><span class="value">${formatDate(envelope.received_at)}</span></div>
-    ${envelope.estimated_ready_date ? `<div class="row"><span class="label">Fecha estimada</span><span class="value">${formatDate(envelope.estimated_ready_date)}</span></div>` : ""}
+    <div class="section">
+      <div class="section-title">Presupuesto</div>
+      <div class="row"><span class="label">Estado</span><span class="value">${quoteLabel}</span></div>
+      ${envelope.quote_amount != null ? `<div class="row"><span class="label">Monto</span><span class="value">$${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></div>` : ""}
+    </div>
+    <div class="divider"></div>
+    <div class="section">
+      <div class="section-title">Recepción</div>
+      <div class="row"><span class="label">Local</span><span class="value">${warehouse}</span></div>
+      <div class="row"><span class="label">Recibido por</span><span class="value">${envelope.received_by_employee?.name || "—"}</span></div>
+      <div class="row"><span class="label">Fecha</span><span class="value">${formatDate(envelope.received_at)}</span></div>
+      ${envelope.estimated_ready_date ? `<div class="row"><span class="label">Fecha estimada</span><span class="value">${formatDate(envelope.estimated_ready_date)}</span></div>` : ""}
+    </div>
   `
 
   const customerCopy = `
     <div class="copy">
       <div class="copy-header">
-        <div>
-          <div class="copy-title">Familia Santarelli</div>
-          <div class="copy-sub">Talón del cliente</div>
-        </div>
-        <div class="copy-number">${envelope.number}</div>
+        <div class="brand">FAMILIA SANTARELLI</div>
+        <div class="copy-sub">Comprobante de Recepción</div>
       </div>
-      ${sharedFields}
-      <div class="copy-footer">Tel: ${c?.phone || "—"}</div>
+      <div class="copy-number">${envelope.number}</div>
+      ${baseFields}
+      <div class="signature">
+        <div class="signature-line"></div>
+        <div class="signature-label">Firma del cliente</div>
+      </div>
     </div>
   `
 
   const internalCopy = `
     <div class="copy">
       <div class="copy-header">
-        <div>
-          <div class="copy-title">Familia Santarelli</div>
-          <div class="copy-sub">Copia interna</div>
-        </div>
-        <div class="copy-number">${envelope.number}</div>
+        <div class="brand">FAMILIA SANTARELLI</div>
+        <div class="copy-sub">Copia interna</div>
       </div>
-      ${sharedFields}
-      ${envelope.jeweler ? `<div class="row"><span class="label">Joyero</span><span class="value">${envelope.jeweler.name}</span></div>` : ""}
-      ${envelope.internal_notes ? `<div class="internal-notes"><div class="work-label">Notas internas</div><div class="work-text">${envelope.internal_notes}</div></div>` : ""}
-      <div class="copy-footer">Tel: ${c?.phone || "—"}</div>
+      <div class="copy-number">${envelope.number}</div>
+      ${baseFields}
+      ${envelope.quote_notes ? `<div class="divider"></div><div class="section"><div class="section-title">Detalle presupuesto</div><div class="row-text">${envelope.quote_notes}</div></div>` : ""}
+      ${envelope.jeweler || envelope.internal_notes ? `<div class="divider"></div><div class="section">
+        <div class="section-title">Operativo</div>
+        ${envelope.jeweler ? `<div class="row"><span class="label">Joyero</span><span class="value">${envelope.jeweler.name}</span></div>` : ""}
+        ${envelope.internal_notes ? `<div class="row-text">${envelope.internal_notes}</div>` : ""}
+      </div>` : ""}
     </div>
   `
 
@@ -349,36 +371,51 @@ function printEnvelope(envelope: Envelope) {
     <meta charset="UTF-8"><title>Sobre ${envelope.number}</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      @page { size: A5 landscape; margin: 6mm; }
-      body { font-family: Arial, sans-serif; font-size: 9pt; }
+      @page { size: 105mm 148mm; margin: 0; }
+      body { font-family: Arial, sans-serif; font-size: 8pt; color: #111; }
       .copy {
-        border: 1.5px solid #000;
-        padding: 4mm 5mm;
+        width: 105mm;
+        min-height: 148mm;
+        padding: 5mm;
         page-break-after: always;
-        min-height: 130mm;
         display: flex;
         flex-direction: column;
-        gap: 1.5mm;
+        gap: 1.6mm;
       }
       .copy:last-child { page-break-after: avoid; }
-      .copy-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 1.5mm;
+      .copy-header { text-align: center; }
+      .brand { font-size: 12pt; font-weight: bold; letter-spacing: 0.5px; }
+      .copy-sub { font-size: 7.5pt; color: #555; margin-top: 0.5mm; }
+      .copy-number {
+        font-family: monospace;
+        font-size: 24pt;
+        font-weight: bold;
+        text-align: center;
+        letter-spacing: 1px;
+        margin: 1.5mm 0 2mm;
+        padding: 1.5mm 0;
+        border: 1.2px solid #000;
+        border-radius: 1.5mm;
       }
-      .copy-title { font-size: 11pt; font-weight: bold; }
-      .copy-sub { font-size: 7.5pt; color: #555; }
-      .copy-number { font-size: 16pt; font-weight: bold; font-family: monospace; letter-spacing: 1px; }
-      .divider { border-top: 0.5px solid #bbb; margin: 1mm 0; }
-      .row { display: flex; gap: 4mm; align-items: baseline; }
-      .label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.3px; color: #666; min-width: 26mm; flex-shrink: 0; }
-      .value { font-size: 9pt; font-weight: 600; }
-      .mono { font-family: monospace; }
-      .work-label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.3px; color: #666; margin-bottom: 1mm; }
-      .work-text { font-size: 9pt; border: 0.5px solid #bbb; border-radius: 1.5px; padding: 1.5mm 2mm; min-height: 14mm; white-space: pre-wrap; }
-      .internal-notes { margin-top: 1mm; }
-      .copy-footer { margin-top: auto; padding-top: 2mm; font-size: 7.5pt; color: #555; border-top: 0.5px dashed #bbb; }
+      .divider { border-top: 0.5px solid #bbb; margin: 0.3mm 0; }
+      .section-title { font-size: 6.8pt; text-transform: uppercase; letter-spacing: 0.4px; color: #777; font-weight: bold; margin-bottom: 0.6mm; }
+      .row { display: flex; gap: 2mm; align-items: baseline; }
+      .label { font-size: 6.8pt; text-transform: uppercase; letter-spacing: 0.2px; color: #666; min-width: 19mm; flex-shrink: 0; }
+      .value { font-size: 8.3pt; font-weight: 600; word-break: break-word; }
+      .row-text { font-size: 8pt; white-space: pre-wrap; }
+      .work-section { flex: 1 0 auto; }
+      .work-text {
+        font-size: 8.3pt;
+        border: 0.5px solid #bbb;
+        border-radius: 1mm;
+        padding: 1.5mm 2mm;
+        min-height: 16mm;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .signature { margin-top: auto; padding-top: 3mm; text-align: center; }
+      .signature-line { border-top: 0.7px solid #000; margin: 0 4mm; }
+      .signature-label { font-size: 7pt; color: #555; margin-top: 1mm; }
     </style>
     </head><body>
     ${customerCopy}
