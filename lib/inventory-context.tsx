@@ -157,7 +157,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes, categoryAttributesRes, customersRes, jewelersRes, employeesRes, envelopeSubtypesRes] = await Promise.all([
         supabase.from("products").select(`
           *,
-          suppliers(id, name, contact, created_at)
+          suppliers(id, name, contact, price_group, coefficient, created_at)
         `).order("created_at", { ascending: false }),
         supabase.from("warehouses").select("*").order("name"),
         supabase.from("movements").select(`
@@ -271,7 +271,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         internal_code: product.internal_code || null,
         attributes: product.attributes || {},
       })
-      .select(`*, suppliers(id, name, contact, created_at)`)
+      .select(`*, suppliers(id, name, contact, price_group, coefficient, created_at)`)
       .single()
     
     if (error) {

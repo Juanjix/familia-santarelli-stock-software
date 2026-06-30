@@ -108,9 +108,7 @@ function LabelPreview({ product, scale = 6 }: {
   const w = LABEL_W_MM * scale
   const h = LABEL_H_MM * scale
   const leftW = 30 * scale       // ~30mm zona izquierda
-  const price = product.sell_price != null
-    ? (Number.isInteger(product.sell_price) ? product.sell_price : product.sell_price)
-    : ""
+  const price = product.sell_price != null ? product.sell_price : ""
   const group = product.supplier?.price_group || ""
 
   return (
@@ -235,9 +233,7 @@ export default function LabelsPage() {
     list.forEach(product => {
       const quantity = productsOverride ? 1 : (quantities.get(product.id) || 1)
       const code = product.barcode || ""
-      const price = product.sell_price != null
-        ? (Number.isInteger(product.sell_price) ? product.sell_price : product.sell_price)
-        : ""
+      const price = product.sell_price != null ? product.sell_price : ""
       const group = product.supplier?.price_group || ""
       const barcodeSrc = getBarcodeDataURL(code)
 
