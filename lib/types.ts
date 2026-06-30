@@ -76,15 +76,31 @@ export interface Envelope {
   delivered_by: string | null
   delivery_notes: string | null
   internal_notes: string | null
+  pending_transfer_to_warehouse_id: string | null
+  pending_transfer_sent_by: string | null
+  pending_transfer_sent_at: string | null
   created_at: string
   updated_at: string
   // Joined
   customer?: Customer
   received_warehouse?: { id: string; name: string }
   current_warehouse?: { id: string; name: string }
+  pending_transfer_warehouse?: { id: string; name: string }
   jeweler?: Jeweler
   received_by_employee?: Employee
   product_subtype?: EnvelopeSubtype
+}
+
+export interface EnvelopeTransfer {
+  id: string
+  envelope_id: string
+  from_warehouse_id: string | null
+  to_warehouse_id: string
+  sent_by: string
+  sent_at: string
+  received_by: string | null
+  received_at: string | null
+  status: 'in_transit' | 'received'
 }
 
 export interface EnvelopeStatusLog {

@@ -95,6 +95,7 @@ type ActiveAction =
   | "send_to_jeweler"
   | "receive_from_jeweler"
   | "transfer"
+  | "confirm_receipt"
   | "request_quote"
   | "inform_quote"
   | "approve_quote"
@@ -108,7 +109,8 @@ const ACTION_CONFIG: Record<
 > = {
   send_to_jeweler:      { label: "Enviar a Joyero",       icon: "🔧", variant: "default" },
   receive_from_jeweler: { label: "Recibir de Joyero",     icon: "📬", variant: "default" },
-  transfer:             { label: "Transferir",             icon: "🏪", variant: "outline" },
+  transfer:             { label: "Enviar a otro local",   icon: "🚚", variant: "outline" },
+  confirm_receipt:      { label: "Confirmar recepción",   icon: "✅", variant: "default" },
   request_quote:        { label: "Solicitar presupuesto",  icon: "💬", variant: "outline" },
   inform_quote:         { label: "Informar presupuesto",   icon: "💰", variant: "default" },
   approve_quote:        { label: "Aprobar presupuesto",    icon: "✅", variant: "default" },
@@ -121,6 +123,14 @@ const ACTION_CONFIG: Record<
 const QUOTE_ACTIONS: Exclude<ActiveAction, null>[] = ["request_quote", "inform_quote", "approve_quote", "reject_quote"]
 
 function getAvailableActions(envelope: Envelope): Exclude<ActiveAction, null>[] {
+  // Mientras el sobre está en tránsito entre locales, la única acción
+  // posible es confirmar la recepción (o cancelar el sobre por completo).
+  // No tiene sentido transferir de nuevo, asignar joyero, etc. sin que
+  // alguien haya confirmado primero dónde está físicamente.
+  if (envelope.pending_transfer_to_warehouse_id) {
+    return ["confirm_receipt", "cancel_envelope"]
+  }
+
   const a: Exclude<ActiveAction, null>[] = []
   switch (envelope.status) {
     case "received":
@@ -264,6 +274,11 @@ function elapsedBadgeColor(status: EnvelopeStatus, days: number): string {
 function getEnvelopeLocation(envelope: Envelope): string {
   if (envelope.status === "delivered") return "Entregado"
   if (envelope.status === "cancelled") return "Cancelado"
+  // En tránsito: el sobre todavía NO está físicamente en destino — recién
+  // se actualiza current_warehouse_id cuando alguien confirma la recepción.
+  if (envelope.pending_transfer_to_warehouse_id) {
+    return `En tránsito → ${envelope.pending_transfer_warehouse?.name || "destino"}`
+  }
   if (envelope.status === "in_workshop") {
     return envelope.jeweler?.name ? `Taller — ${envelope.jeweler.name}` : "En taller"
   }
@@ -280,6 +295,8 @@ const EVENT_ICONS: Record<string, string> = {
   jeweler_removed: "❌",
   quote_updated: "💰",
   location_transfer: "🏪",
+  transfer_sent: "🚚",
+  transfer_received: "✅",
 }
 
 // ── Print ───────────────────────────────────────────────────────────────────
@@ -908,11 +925,12 @@ interface EnvelopeDetailDialogProps {
   envelope: Envelope | null
   onClose: () => void
   onUpdated: (id: string, updates: Partial<Envelope>, statusNote?: string, createdBy?: string) => Promise<void>
+  onLocalUpdate: (id: string, updates: Partial<Envelope>) => void
   onPrint: (envelope: Envelope) => void
 }
 
-function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: EnvelopeDetailDialogProps) {
-  const { jewelers, warehouses, fetchEnvelopeEvents } = useInventory()
+function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onPrint }: EnvelopeDetailDialogProps) {
+  const { jewelers, warehouses, fetchEnvelopeEvents, sendTransfer, confirmTransferReceipt } = useInventory()
   const [events, setEvents] = useState<EnvelopeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
 
@@ -939,6 +957,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
   const [actionDeliveryNotes, setActionDeliveryNotes] = useState("")
   const [actionNote, setActionNote] = useState("")
   const [actionSaving, setActionSaving] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [actionOperator, setActionOperator] = useState<string>(() => {
     if (typeof window !== "undefined") return localStorage.getItem("sobres_operator") || ""
     return ""
@@ -952,6 +971,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
     setActionDeliveredBy("")
     setActionDeliveryNotes("")
     setActionNote("")
+    setActionError(null)
   }
 
   useEffect(() => {
@@ -1005,6 +1025,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
 
   const handleAction = async () => {
     setActionSaving(true)
+    setActionError(null)
     const op = actionOperator.trim() || undefined
     try {
       switch (activeAction) {
@@ -1017,9 +1038,32 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
         case "receive_from_jeweler":
           await onUpdated(envelope.id, { status: "ready" }, undefined, op)
           break
-        case "transfer":
-          await onUpdated(envelope.id, { current_warehouse_id: actionWarehouseId }, undefined, op)
+        case "transfer": {
+          const result = await sendTransfer(envelope.id, envelope.current_warehouse_id, actionWarehouseId, op)
+          if (!result.success) { setActionError(result.error || "No se pudo enviar el sobre."); return }
+          const destWarehouse = warehouses.find(w => w.id === actionWarehouseId)
+          onLocalUpdate(envelope.id, {
+            pending_transfer_to_warehouse_id: actionWarehouseId,
+            pending_transfer_sent_by: op || "Sistema",
+            pending_transfer_sent_at: new Date().toISOString(),
+            pending_transfer_warehouse: destWarehouse ? { id: destWarehouse.id, name: destWarehouse.name } : undefined,
+          })
           break
+        }
+        case "confirm_receipt": {
+          const result = await confirmTransferReceipt(envelope.id, op)
+          if (!result.success) { setActionError(result.error || "No se pudo confirmar la recepción."); return }
+          const arrivedWarehouse = envelope.pending_transfer_warehouse
+          onLocalUpdate(envelope.id, {
+            current_warehouse_id: envelope.pending_transfer_to_warehouse_id,
+            current_warehouse: arrivedWarehouse,
+            pending_transfer_to_warehouse_id: null,
+            pending_transfer_sent_by: null,
+            pending_transfer_sent_at: null,
+            pending_transfer_warehouse: undefined,
+          })
+          break
+        }
         case "inform_quote":
           await onUpdated(envelope.id, {
             quote_status: "informed",
@@ -1143,6 +1187,10 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
         </div>
       )}
 
+      {actionError && (
+        <p className="text-sm text-destructive bg-destructive/10 rounded-md p-2">{actionError}</p>
+      )}
+
       <div className="flex gap-2 pt-1">
         <Button variant="outline" size="sm" onClick={() => { setActiveAction(null); resetActionForm() }}>
           Cancelar
@@ -1177,36 +1225,64 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onPrint }: Envelop
         <div className="grid gap-5 text-sm mt-2">
 
           {/* ── 1. TARJETA DE ESTADO Y UBICACIÓN ── */}
-          <div className={`rounded-xl border-2 p-4 ${STATUS_CARD_COLORS[envelope.status]}`}>
-            <div className="flex items-start gap-3">
-              <span className="text-3xl leading-none mt-0.5 shrink-0">{STATUS_EMOJI[envelope.status]}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-base leading-snug">{STATUS_LABELS[envelope.status]}</p>
-                {envelope.quote_status !== "not_required" && (
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium mt-1 ${QUOTE_STATUS_COLORS[envelope.quote_status]}`}>
-                    Presupuesto: {QUOTE_STATUS_LABELS[envelope.quote_status]}
-                    {envelope.quote_amount != null ? ` · $${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}` : ""}
-                  </span>
-                )}
-                <div className="flex items-center gap-1.5 mt-2">
-                  <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="font-semibold text-sm">{getEnvelopeLocation(envelope)}</span>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {reversedEvents.length > 0 && reversedEvents[0].created_by && reversedEvents[0].created_by !== "Sistema" && (
+          {envelope.pending_transfer_to_warehouse_id ? (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
+              <div className="flex items-start gap-3">
+                <span className="text-3xl leading-none mt-0.5 shrink-0">🚚</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-base leading-snug">En tránsito</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="font-semibold text-sm">{getEnvelopeLocation(envelope)}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <div>
-                      <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Último responsable</span>
-                      <span className="font-semibold text-foreground">{reversedEvents[0].created_by}</span>
+                      <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Enviado por</span>
+                      <span className="font-semibold text-foreground">{envelope.pending_transfer_sent_by || "—"}</span>
                     </div>
+                    <div>
+                      <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Hace</span>
+                      <span className="font-semibold text-foreground">{elapsedLabel(daysElapsed(envelope.pending_transfer_sent_at))}</span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+                    Falta: confirmar recepción en {envelope.pending_transfer_warehouse?.name || "destino"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className={`rounded-xl border-2 p-4 ${STATUS_CARD_COLORS[envelope.status]}`}>
+              <div className="flex items-start gap-3">
+                <span className="text-3xl leading-none mt-0.5 shrink-0">{STATUS_EMOJI[envelope.status]}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-base leading-snug">{STATUS_LABELS[envelope.status]}</p>
+                  {envelope.quote_status !== "not_required" && (
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium mt-1 ${QUOTE_STATUS_COLORS[envelope.quote_status]}`}>
+                      Presupuesto: {QUOTE_STATUS_LABELS[envelope.quote_status]}
+                      {envelope.quote_amount != null ? ` · $${envelope.quote_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}` : ""}
+                    </span>
                   )}
-                  <div>
-                    <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Tiempo en estado</span>
-                    <span className="font-semibold text-foreground">{elapsedLabel(daysElapsed(envelope.updated_at))}</span>
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="font-semibold text-sm">{getEnvelopeLocation(envelope)}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    {reversedEvents.length > 0 && reversedEvents[0].created_by && reversedEvents[0].created_by !== "Sistema" && (
+                      <div>
+                        <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Último responsable</span>
+                        <span className="font-semibold text-foreground">{reversedEvents[0].created_by}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="block text-muted-foreground/60 uppercase text-[10px] font-medium tracking-wide">Tiempo en estado</span>
+                      <span className="font-semibold text-foreground">{elapsedLabel(daysElapsed(envelope.updated_at))}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* ── 2. TRABAJO SOLICITADO ── */}
           <section>
@@ -1647,6 +1723,14 @@ export default function SobresPage() {
     setDetailEnvelope(prev => prev && prev.id === id ? { ...prev, ...patch } : prev)
   }, [updateEnvelope, warehouses, jewelers])
 
+  // Merge de estado local sin escribir a la base — usado por sendTransfer /
+  // confirmTransferReceipt, que ya hacen su propia escritura en Supabase y
+  // solo necesitan reflejar el resultado en pantalla al instante.
+  const handleLocalUpdate = useCallback((id: string, updates: Partial<Envelope>) => {
+    setEnvelopes(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e))
+    setDetailEnvelope(prev => prev && prev.id === id ? { ...prev, ...updates } : prev)
+  }, [])
+
   const activeCounts = envelopes.filter(e => !["delivered", "cancelled"].includes(e.status)).length
 
   return (
@@ -1718,7 +1802,11 @@ export default function SobresPage() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <StatusBadge status={e.status} />
-                          {!["delivered", "cancelled"].includes(e.status) && (
+                          {e.pending_transfer_to_warehouse_id ? (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium w-fit bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                              🚚 En tránsito · {elapsedLabel(daysElapsed(e.pending_transfer_sent_at))}
+                            </span>
+                          ) : !["delivered", "cancelled"].includes(e.status) && (
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium w-fit ${elapsedBadgeColor(e.status, daysElapsed(e.updated_at))}`}>
                               {elapsedLabel(daysElapsed(e.updated_at))}
                             </span>
@@ -1761,6 +1849,7 @@ export default function SobresPage() {
         envelope={detailEnvelope}
         onClose={() => setDetailEnvelope(null)}
         onUpdated={handleUpdated}
+        onLocalUpdate={handleLocalUpdate}
         onPrint={printEnvelope}
       />
     </div>

@@ -119,10 +119,12 @@ interface InventoryContextType {
   updateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>
   deleteEmployee: (id: string) => Promise<{ success: boolean; error?: string }>
   fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
-  createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id'>) => Promise<Envelope | null>
+  createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id' | 'pending_transfer_to_warehouse_id' | 'pending_transfer_sent_by' | 'pending_transfer_sent_at'>) => Promise<Envelope | null>
   updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, createdBy?: string) => Promise<void>
   getEnvelopeStatusLog: (envelopeId: string) => Promise<EnvelopeStatusLog[]>
   fetchEnvelopeEvents: (envelopeId: string) => Promise<EnvelopeEvent[]>
+  sendTransfer: (envelopeId: string, fromWarehouseId: string | null, toWarehouseId: string, sentBy?: string) => Promise<{ success: boolean; error?: string }>
+  confirmTransferReceipt: (envelopeId: string, receivedBy?: string) => Promise<{ success: boolean; error?: string }>
 }
 
 const InventoryContext = createContext<InventoryContextType | null>(null)
@@ -773,6 +775,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     customer:customers(id, first_name, last_name, dni, phone, address, created_at, updated_at),
     received_warehouse:warehouses!received_warehouse_id(id, name),
     current_warehouse:warehouses!current_warehouse_id(id, name),
+    pending_transfer_warehouse:warehouses!pending_transfer_to_warehouse_id(id, name),
     jeweler:jewelers(id, name, is_active, created_at, updated_at),
     received_by_employee:employees(id, name, is_active, created_at, updated_at),
     product_subtype:envelope_subtypes(id, name, product_type, is_active, sort_order, created_at)
@@ -786,7 +789,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return (data || []) as Envelope[]
   }, [supabase])
 
-  const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'received_by_employee' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id'>): Promise<Envelope | null> => {
+  const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'received_by_employee' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id' | 'pending_transfer_to_warehouse_id' | 'pending_transfer_sent_by' | 'pending_transfer_sent_at'>): Promise<Envelope | null> => {
     const insertData = { ...data, number: '', current_warehouse_id: data.received_warehouse_id }
     const { data: created, error } = await supabase.from("envelopes").insert(insertData).select(ENVELOPE_SELECT).single()
     if (error) { console.error("Error creating envelope:", error); return null }
@@ -884,6 +887,92 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Envío de un traslado entre locales: el sobre queda "en tránsito" —
+  // current_warehouse_id NO cambia todavía. Recién se actualiza cuando
+  // alguien en destino confirma la recepción (confirmTransferReceipt).
+  const sendTransfer = useCallback(async (
+    envelopeId: string,
+    fromWarehouseId: string | null,
+    toWarehouseId: string,
+    sentBy?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const by = sentBy || 'Sistema'
+
+    const { data: transferRow, error: transferError } = await supabase
+      .from("envelope_transfers")
+      .insert({ envelope_id: envelopeId, from_warehouse_id: fromWarehouseId, to_warehouse_id: toWarehouseId, sent_by: by })
+      .select()
+      .single()
+    if (transferError) { console.error("Error creating envelope_transfer:", transferError); return { success: false, error: transferError.message } }
+
+    const { error: envError } = await supabase.from("envelopes").update({
+      pending_transfer_to_warehouse_id: toWarehouseId,
+      pending_transfer_sent_by: by,
+      pending_transfer_sent_at: transferRow.sent_at,
+      updated_at: new Date().toISOString(),
+    }).eq("id", envelopeId)
+    if (envError) { console.error("Error updating envelope with pending transfer:", envError); return { success: false, error: envError.message } }
+
+    const { data: w } = await supabase.from("warehouses").select("name").eq("id", toWarehouseId).single()
+    const { error: eventError } = await supabase.from("envelope_events").insert({
+      envelope_id: envelopeId,
+      event_type: 'transfer_sent',
+      title: `Enviado a ${w?.name || 'local'}`,
+      detail: null,
+      created_by: by,
+    })
+    if (eventError) console.error("Error creating transfer_sent event:", eventError)
+
+    return { success: true }
+  }, [supabase])
+
+  // Confirmación de recepción física en destino: recién acá se actualiza
+  // current_warehouse_id y se cierra el registro de envelope_transfers.
+  const confirmTransferReceipt = useCallback(async (
+    envelopeId: string,
+    receivedBy?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const by = receivedBy || 'Sistema'
+
+    const { data: openTransfer, error: findError } = await supabase
+      .from("envelope_transfers")
+      .select("*")
+      .eq("envelope_id", envelopeId)
+      .eq("status", "in_transit")
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (findError) { console.error("Error finding open transfer:", findError); return { success: false, error: findError.message } }
+    if (!openTransfer) return { success: false, error: "No hay una transferencia pendiente para este sobre." }
+
+    const receivedAt = new Date().toISOString()
+    const { error: transferError } = await supabase.from("envelope_transfers")
+      .update({ status: 'received', received_by: by, received_at: receivedAt })
+      .eq("id", openTransfer.id)
+    if (transferError) { console.error("Error confirming envelope_transfer:", transferError); return { success: false, error: transferError.message } }
+
+    const { error: envError } = await supabase.from("envelopes").update({
+      current_warehouse_id: openTransfer.to_warehouse_id,
+      pending_transfer_to_warehouse_id: null,
+      pending_transfer_sent_by: null,
+      pending_transfer_sent_at: null,
+      updated_at: receivedAt,
+    }).eq("id", envelopeId)
+    if (envError) { console.error("Error updating envelope after transfer receipt:", envError); return { success: false, error: envError.message } }
+
+    const { data: w } = await supabase.from("warehouses").select("name").eq("id", openTransfer.to_warehouse_id).single()
+    const { error: eventError } = await supabase.from("envelope_events").insert({
+      envelope_id: envelopeId,
+      event_type: 'transfer_received',
+      title: `Recepción confirmada en ${w?.name || 'local'}`,
+      detail: null,
+      created_by: by,
+    })
+    if (eventError) console.error("Error creating transfer_received event:", eventError)
+
+    return { success: true }
+  }, [supabase])
+
   const getEnvelopeStatusLog = useCallback(async (envelopeId: string): Promise<EnvelopeStatusLog[]> => {
     const { data, error } = await supabase.from("envelope_status_log").select("*").eq("envelope_id", envelopeId).order("created_at")
     if (error) { console.error("Error fetching status log:", error); return [] }
@@ -952,6 +1041,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       updateEnvelope,
       getEnvelopeStatusLog,
       fetchEnvelopeEvents,
+      sendTransfer,
+      confirmTransferReceipt,
     }}>
       {children}
     </InventoryContext.Provider>
