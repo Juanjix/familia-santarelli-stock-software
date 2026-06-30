@@ -98,27 +98,28 @@ function BarcodeCanvas({ code, className }: { code: string; className?: string }
   return <canvas ref={canvasRef} className={className} />
 }
 
-// Vista previa a escala — banda horizontal: SKU | Atributo | Barcode.
+// Vista previa a escala — dos zonas: izquierda (Precio + Grupo) | derecha (Barcode).
 // Layout y proporciones idénticas a lo que se imprime.
-function LabelPreview({ product, attributeText, scale = 6 }: {
-  product: { sku: string; barcode: string | null; internal_code?: string | null }
-  attributeText: string | null
+function LabelPreview({ product, scale = 6 }: {
+  product: Product
   scale?: number
 }) {
   const code = product.barcode || ""
-  const identifier = (product.internal_code || product.sku || "").toUpperCase()
   const w = LABEL_W_MM * scale
   const h = LABEL_H_MM * scale
+  const leftW = 30 * scale       // ~30mm zona izquierda
+  const price = product.sell_price != null
+    ? (Number.isInteger(product.sell_price) ? product.sell_price : product.sell_price)
+    : ""
+  const group = product.supplier?.price_group || ""
 
   return (
     <div
       style={{
         width: `${w}px`,
         height: `${h}px`,
-        padding: `${0.5 * scale}px ${1.5 * scale}px`,
         display: "flex",
-        alignItems: "center",
-        gap: `${1.5 * scale}px`,
+        alignItems: "stretch",
         border: "1px solid #e2e8f0",
         background: "#ffffff",
         boxSizing: "border-box",
@@ -126,40 +127,34 @@ function LabelPreview({ product, attributeText, scale = 6 }: {
         overflow: "hidden",
       }}
     >
+      {/* Zona izquierda: Precio + Grupo centrados */}
       <div style={{
-        fontSize: `${7 * scale / 6}px`,
-        fontWeight: 700,
-        letterSpacing: "0.3px",
-        color: "#000",
-        lineHeight: 1,
+        width: `${leftW}px`,
         flexShrink: 0,
-        maxWidth: `${28 * scale}px`,
-        overflow: "hidden",
-        whiteSpace: "nowrap",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRight: "0.5px solid #ccc",
+        padding: `0 ${2 * scale / 6}px`,
       }}>
-        {identifier}
+        <div style={{ fontSize: `${8 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1 }}>
+          {price}
+        </div>
+        {group && (
+          <div style={{ fontSize: `${7 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1, marginTop: `${0.8 * scale / 6}px` }}>
+            {group}
+          </div>
+        )}
       </div>
 
-      {attributeText && (
-        <div style={{
-          fontSize: `${6.5 * scale / 6}px`,
-          fontWeight: 600,
-          color: "#000",
-          lineHeight: 1,
-          flexShrink: 0,
-          maxWidth: `${22 * scale}px`,
-          overflow: "hidden",
-          whiteSpace: "nowrap",
-        }}>
-          {attributeText}
-        </div>
-      )}
-
+      {/* Zona derecha: Barcode con margen interno (5mm der, 1.5mm arr/abj) */}
       <div style={{
         flex: 1,
         display: "flex",
         alignItems: "center",
-        justifyContent: "flex-end",
+        justifyContent: "center",
+        padding: `${1.5 * scale / 6}px ${5 * scale / 6}px ${1.5 * scale / 6}px ${2 * scale / 6}px`,
         height: "100%",
         minWidth: 0,
         overflow: "hidden",
@@ -239,16 +234,20 @@ export default function LabelsPage() {
     let labelsHtml = ""
     list.forEach(product => {
       const quantity = productsOverride ? 1 : (quantities.get(product.id) || 1)
-      const identifier = ((product.internal_code || product.sku) || "").toUpperCase()
       const code = product.barcode || ""
-      const attributeText = getPrimaryAttributeText(product, categories, categoryAttributes)
+      const price = product.sell_price != null
+        ? (Number.isInteger(product.sell_price) ? product.sell_price : product.sell_price)
+        : ""
+      const group = product.supplier?.price_group || ""
       const barcodeSrc = getBarcodeDataURL(code)
 
       for (let i = 0; i < quantity; i++) {
         labelsHtml += `
           <div class="label">
-            <div class="label-id">${identifier}</div>
-            ${attributeText ? `<div class="label-attr">${attributeText}</div>` : ""}
+            <div class="label-left">
+              <div class="label-price">${price}</div>
+              ${group ? `<div class="label-group">${group}</div>` : ""}
+            </div>
             <div class="label-barcode">
               ${barcodeSrc ? `<img src="${barcodeSrc}" alt="${code}" />` : ""}
             </div>
@@ -279,51 +278,52 @@ export default function LabelsPage() {
             .label {
               width: ${LABEL_W_MM}mm;
               height: ${LABEL_H_MM}mm;
-              padding: 0.5mm 1.5mm;
               display: flex;
-              align-items: center;
-              gap: 1.5mm;
+              align-items: stretch;
               overflow: hidden;
               page-break-after: always;
             }
             .label:last-child { page-break-after: avoid; }
 
-            .label-id {
-              font-size: 7.5pt;
-              font-weight: 700;
-              letter-spacing: 0.3px;
-              color: #000;
-              line-height: 1;
+            .label-left {
+              width: 30mm;
               flex-shrink: 0;
-              max-width: 26mm;
-              overflow: hidden;
-              white-space: nowrap;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              border-right: 0.4px solid #ccc;
+              padding: 0 1.5mm;
             }
 
-            .label-attr {
-              font-size: 7pt;
-              font-weight: 600;
+            .label-price {
+              font-size: 8.5pt;
+              font-weight: 700;
               color: #000;
               line-height: 1;
-              flex-shrink: 0;
-              max-width: 20mm;
-              overflow: hidden;
-              white-space: nowrap;
+            }
+
+            .label-group {
+              font-size: 7.5pt;
+              font-weight: 700;
+              color: #000;
+              line-height: 1;
+              margin-top: 0.8mm;
             }
 
             .label-barcode {
               flex: 1;
               display: flex;
               align-items: center;
-              justify-content: flex-end;
+              justify-content: center;
               height: 100%;
               min-width: 0;
               overflow: hidden;
+              padding: 1.5mm 5mm 1.5mm 2mm;
             }
             .label-barcode img {
               height: 100%;
               width: auto;
-              max-width: 100%;
               object-fit: contain;
             }
           </style>
@@ -490,7 +490,6 @@ export default function LabelsPage() {
             {previewProduct && (
               <LabelPreview
                 product={previewProduct}
-                attributeText={getPrimaryAttributeText(previewProduct, categories, categoryAttributes)}
                 scale={6}
               />
             )}
