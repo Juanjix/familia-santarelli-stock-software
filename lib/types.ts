@@ -21,9 +21,12 @@ export interface Customer {
   updated_at: string
 }
 
+export type WorkerType = 'jeweler' | 'watchmaker'
+
 export interface Jeweler {
   id: string
   name: string
+  worker_type: WorkerType
   is_active: boolean
   created_at: string
   updated_at: string

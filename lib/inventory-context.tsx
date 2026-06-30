@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, Employee, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, EnvelopeEvent, QuoteStatus } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, WorkerType, Employee, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, EnvelopeEvent, QuoteStatus } from "./types"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -112,7 +112,7 @@ interface InventoryContextType {
   envelopeSubtypes: EnvelopeSubtype[]
   addCustomer: (data: { first_name: string; last_name: string; dni: string; phone?: string | null; address?: string | null }) => Promise<Customer | null>
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>
-  addJeweler: (name: string) => Promise<Jeweler | null>
+  addJeweler: (name: string, workerType?: WorkerType) => Promise<Jeweler | null>
   updateJeweler: (id: string, updates: Partial<Jeweler>) => Promise<void>
   deleteJeweler: (id: string) => Promise<void>
   addEmployee: (name: string) => Promise<Employee | null>
@@ -722,9 +722,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c))
   }, [supabase])
 
-  // ── Jewelers ────────────────────────────────────────────
-  const addJeweler = useCallback(async (name: string): Promise<Jeweler | null> => {
-    const { data: created, error } = await supabase.from("jewelers").insert({ name }).select().single()
+  // ── Jewelers / especialistas (joyeros y relojeros) ───────
+  const addJeweler = useCallback(async (name: string, workerType: WorkerType = 'jeweler'): Promise<Jeweler | null> => {
+    const { data: created, error } = await supabase.from("jewelers").insert({ name, worker_type: workerType }).select().single()
     if (error) { console.error("Error adding jeweler:", error); return null }
     setJewelers(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
     return created
@@ -776,7 +776,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     received_warehouse:warehouses!received_warehouse_id(id, name),
     current_warehouse:warehouses!current_warehouse_id(id, name),
     pending_transfer_warehouse:warehouses!pending_transfer_to_warehouse_id(id, name),
-    jeweler:jewelers(id, name, is_active, created_at, updated_at),
+    jeweler:jewelers(id, name, worker_type, is_active, created_at, updated_at),
     received_by_employee:employees(id, name, is_active, created_at, updated_at),
     product_subtype:envelope_subtypes(id, name, product_type, is_active, sort_order, created_at)
   `
@@ -855,11 +855,11 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         const isNew = !current?.jeweler_id
         events.push({
           event_type: isNew ? 'jeweler_assigned' : 'jeweler_changed',
-          title: isNew ? `Asignado a ${j?.name || 'joyero'}` : `Cambio de joyero: ${j?.name || 'joyero'}`,
+          title: isNew ? `Asignado a ${j?.name || 'especialista'}` : `Cambio de especialista: ${j?.name || 'especialista'}`,
           detail: null,
         })
       } else if (current?.jeweler_id) {
-        events.push({ event_type: 'jeweler_removed', title: 'Joyero removido', detail: null })
+        events.push({ event_type: 'jeweler_removed', title: 'Especialista removido', detail: null })
       }
     }
 

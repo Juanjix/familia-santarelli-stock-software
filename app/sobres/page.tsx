@@ -48,7 +48,7 @@ import {
   Pencil,
   MapPin,
 } from "lucide-react"
-import type { Envelope, EnvelopeStatus, EnvelopeEvent, QuoteStatus, Employee } from "@/lib/types"
+import type { Envelope, EnvelopeStatus, EnvelopeEvent, QuoteStatus, Employee, Jeweler, WorkerType } from "@/lib/types"
 
 // ── Status helpers ──────────────────────────────────────────────────────────
 
@@ -107,8 +107,8 @@ const ACTION_CONFIG: Record<
   Exclude<ActiveAction, null>,
   { label: string; icon: string; variant: "default" | "outline" | "destructive" }
 > = {
-  send_to_jeweler:      { label: "Enviar a Joyero",       icon: "🔧", variant: "default" },
-  receive_from_jeweler: { label: "Recibir de Joyero",     icon: "📬", variant: "default" },
+  send_to_jeweler:      { label: "Enviar a especialista", icon: "🔧", variant: "default" },
+  receive_from_jeweler: { label: "Recibir de especialista", icon: "📬", variant: "default" },
   transfer:             { label: "Enviar a otro local",   icon: "🚚", variant: "outline" },
   confirm_receipt:      { label: "Confirmar recepción",   icon: "✅", variant: "default" },
   request_quote:        { label: "Solicitar presupuesto",  icon: "💬", variant: "outline" },
@@ -194,6 +194,18 @@ const CONDITION_LABELS: Record<string, string> = {
   very_good: "Muy bueno",
   good: "Bueno",
   regular: "Regular",
+}
+
+// Joya → joyero, reloj → relojero. El dropdown de especialistas se filtra
+// según el tipo de producto del sobre — no tiene sentido asignar un
+// relojero a una joya ni viceversa.
+function workerTypeForProduct(productType: "jewelry" | "watch"): WorkerType {
+  return productType === "watch" ? "watchmaker" : "jeweler"
+}
+
+function getAvailableWorkers(jewelers: Jeweler[], productType: "jewelry" | "watch"): Jeweler[] {
+  const type = workerTypeForProduct(productType)
+  return jewelers.filter(j => j.is_active && j.worker_type === type)
 }
 
 const MATERIAL_OPTIONS = ["ORO", "PLATA", "COBRE", "OTROS"] as const
@@ -378,7 +390,7 @@ function printEnvelope(envelope: Envelope) {
       ${envelope.quote_notes ? `<div class="divider"></div><div class="section"><div class="section-title">Detalle presupuesto</div><div class="row-text">${envelope.quote_notes}</div></div>` : ""}
       ${envelope.jeweler || envelope.internal_notes ? `<div class="divider"></div><div class="section">
         <div class="section-title">Operativo</div>
-        ${envelope.jeweler ? `<div class="row"><span class="label">Joyero</span><span class="value">${envelope.jeweler.name}</span></div>` : ""}
+        ${envelope.jeweler ? `<div class="row"><span class="label">${envelope.jeweler.worker_type === "watchmaker" ? "Relojero" : "Joyero"}</span><span class="value">${envelope.jeweler.name}</span></div>` : ""}
         ${envelope.internal_notes ? `<div class="row-text">${envelope.internal_notes}</div>` : ""}
       </div>` : ""}
     </div>
@@ -716,11 +728,11 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
               <Label>Tipo de artículo <span className="text-destructive">*</span></Label>
               <div className="flex gap-2">
                 <Button variant={form.productType === "jewelry" ? "default" : "outline"} size="sm"
-                  onClick={() => { set("productType", "jewelry"); set("productSubtypeId", "") }}>
+                  onClick={() => { set("productType", "jewelry"); set("productSubtypeId", ""); set("jewelerId", "") }}>
                   Joyería
                 </Button>
                 <Button variant={form.productType === "watch" ? "default" : "outline"} size="sm"
-                  onClick={() => { set("productType", "watch"); set("productSubtypeId", "") }}>
+                  onClick={() => { set("productType", "watch"); set("productSubtypeId", ""); set("jewelerId", "") }}>
                   Relojería
                 </Button>
               </div>
@@ -822,14 +834,23 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
             </div>
 
             <div className="grid gap-1.5">
-              <Label>Joyero asignado <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-              <Select value={form.jewelerId || "none"} onValueChange={(v) => set("jewelerId", v === "none" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin asignar</SelectItem>
-                  {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label>Especialista asignado <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
+              {(() => {
+                const availableWorkers = getAvailableWorkers(jewelers, form.productType)
+                const workerLabel = form.productType === "watch" ? "relojeros" : "joyeros"
+                if (availableWorkers.length === 0) {
+                  return <p className="text-sm text-muted-foreground">No hay {workerLabel} disponibles.</p>
+                }
+                return (
+                  <Select value={form.jewelerId || "none"} onValueChange={(v) => set("jewelerId", v === "none" ? "" : v)}>
+                    <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {availableWorkers.map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )
+              })()}
             </div>
 
             <div className="grid gap-1.5">
@@ -1122,18 +1143,26 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
         <p className="font-semibold">{ACTION_CONFIG[activeAction].label}</p>
       </div>
 
-      {activeAction === "send_to_jeweler" && (
-        <div className="grid gap-1.5">
-          <Label className="text-xs">Joyero <span className="text-muted-foreground">(Opcional)</span></Label>
-          <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
-            <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Sin asignar</SelectItem>
-              {jewelers.filter(j => j.is_active).map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+      {activeAction === "send_to_jeweler" && (() => {
+        const availableWorkers = getAvailableWorkers(jewelers, envelope.product_type)
+        const workerLabel = envelope.product_type === "watch" ? "relojeros" : "joyeros"
+        return (
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Especialista <span className="text-muted-foreground">(Opcional)</span></Label>
+            {availableWorkers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay {workerLabel} disponibles.</p>
+            ) : (
+              <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin asignar</SelectItem>
+                  {availableWorkers.map(j => <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        )
+      })()}
 
       {activeAction === "transfer" && (
         <div className="grid gap-1.5">
@@ -1573,14 +1602,16 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
             </div>
           </section>
 
-          {/* Joyero / Fecha estimada / Notas internas */}
+          {/* Especialista / Fecha estimada / Notas internas */}
           {(envelope.jeweler || envelope.estimated_ready_date || editing) && (
             <section>
               <p className="text-xs font-semibold uppercase text-muted-foreground mb-1.5">Asignación</p>
               <div className="rounded-lg border border-border p-3 grid gap-1.5">
                 {envelope.jeweler && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground text-xs">Joyero</span>
+                    <span className="text-muted-foreground text-xs">
+                      {envelope.jeweler.worker_type === "watchmaker" ? "Relojero" : "Joyero"}
+                    </span>
                     <span className="font-medium">{envelope.jeweler.name}</span>
                   </div>
                 )}

@@ -54,7 +54,7 @@ import {
   Hash,
   Type,
 } from "lucide-react"
-import type { Brand, Category, CategoryAttribute, Supplier, Jeweler, Employee } from "@/lib/types"
+import type { Brand, Category, CategoryAttribute, Supplier, Jeweler, WorkerType, Employee } from "@/lib/types"
 
 function slugify(text: string): string {
   return text
@@ -307,10 +307,11 @@ export default function SettingsPage() {
     setDeletingSupplier(null)
   }
 
-  // ── Joyeros ────────────────────────────────────────────────────────────────
+  // ── Especialistas (joyeros y relojeros) ──────────────────────────────────────
   const [jewelerDialogOpen, setJewelerDialogOpen] = useState(false)
   const [editingJeweler, setEditingJeweler] = useState<Jeweler | null>(null)
   const [jewelerDialogName, setJewelerDialogName] = useState("")
+  const [jewelerDialogType, setJewelerDialogType] = useState<WorkerType>("jeweler")
   const [jewelerDialogActive, setJewelerDialogActive] = useState(true)
   const [savingJeweler, setSavingJeweler] = useState(false)
   const [deletingJeweler, setDeletingJeweler] = useState<Jeweler | null>(null)
@@ -320,9 +321,9 @@ export default function SettingsPage() {
     setSavingJeweler(true)
     try {
       if (editingJeweler) {
-        await updateJeweler(editingJeweler.id, { name: jewelerDialogName.trim(), is_active: jewelerDialogActive })
+        await updateJeweler(editingJeweler.id, { name: jewelerDialogName.trim(), worker_type: jewelerDialogType, is_active: jewelerDialogActive })
       } else {
-        await addJeweler(jewelerDialogName.trim())
+        await addJeweler(jewelerDialogName.trim(), jewelerDialogType)
       }
       resetJewelerForm()
       setJewelerDialogOpen(false)
@@ -332,11 +333,11 @@ export default function SettingsPage() {
   }
 
   const resetJewelerForm = () => {
-    setJewelerDialogName(""); setJewelerDialogActive(true); setEditingJeweler(null)
+    setJewelerDialogName(""); setJewelerDialogType("jeweler"); setJewelerDialogActive(true); setEditingJeweler(null)
   }
 
   const openEditJeweler = (j: Jeweler) => {
-    setEditingJeweler(j); setJewelerDialogName(j.name); setJewelerDialogActive(j.is_active)
+    setEditingJeweler(j); setJewelerDialogName(j.name); setJewelerDialogType(j.worker_type); setJewelerDialogActive(j.is_active)
     setJewelerDialogOpen(true)
   }
 
@@ -1176,16 +1177,16 @@ export default function SettingsPage() {
             </AlertDialogContent>
           </AlertDialog>
 
-          {/* Joyeros */}
+          {/* Especialistas (joyeros y relojeros) */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5" />
-                    Joyeros
+                    Especialistas
                   </CardTitle>
-                  <CardDescription>Talleres y artesanos externos para reparaciones</CardDescription>
+                  <CardDescription>Joyeros y relojeros externos para reparaciones</CardDescription>
                 </div>
                 <Dialog open={jewelerDialogOpen} onOpenChange={(open) => { setJewelerDialogOpen(open); if (!open) resetJewelerForm() }}>
                   <DialogTrigger asChild>
@@ -1196,12 +1197,22 @@ export default function SettingsPage() {
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-sm">
                     <DialogHeader>
-                      <DialogTitle>{editingJeweler ? "Editar joyero" : "Nuevo joyero"}</DialogTitle>
+                      <DialogTitle>{editingJeweler ? "Editar especialista" : "Nuevo especialista"}</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-3 py-2">
                       <div className="grid gap-1.5">
                         <Label>Nombre</Label>
                         <Input value={jewelerDialogName} onChange={(e) => setJewelerDialogName(e.target.value)} placeholder="Ej: Carlos Pérez" autoFocus />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label>Especialidad</Label>
+                        <Select value={jewelerDialogType} onValueChange={(v) => setJewelerDialogType(v as WorkerType)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="jeweler">Joyero</SelectItem>
+                            <SelectItem value="watchmaker">Relojero</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       {editingJeweler && (
                         <div className="flex items-center gap-2">
@@ -1222,13 +1233,16 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               {jewelers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay joyeros registrados.</p>
+                <p className="text-sm text-muted-foreground">No hay especialistas registrados.</p>
               ) : (
                 <div className="divide-y divide-border rounded-md border">
                   {jewelers.map((j) => (
                     <div key={j.id} className="flex items-center justify-between px-3 py-2">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{j.name}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {j.worker_type === "watchmaker" ? "Relojero" : "Joyero"}
+                        </Badge>
                         {!j.is_active && <Badge variant="secondary" className="text-xs">Inactivo</Badge>}
                       </div>
                       <div className="flex items-center gap-1">
@@ -1251,20 +1265,20 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Confirmar eliminar joyero */}
+          {/* Confirmar eliminar especialista */}
           <AlertDialog open={!!deletingJeweler} onOpenChange={(open) => !open && setDeletingJeweler(null)}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>¿Eliminar joyero?</AlertDialogTitle>
+                <AlertDialogTitle>¿Eliminar especialista?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Vas a eliminar <strong>{deletingJeweler?.name}</strong>. Los sobres asignados a este joyero quedarán sin asignar.
+                  Vas a eliminar <strong>{deletingJeweler?.name}</strong>. Los sobres asignados a este especialista quedarán sin asignar.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={handleDeleteJeweler}
+                  onClick={(e) => { e.preventDefault(); handleDeleteJeweler() }}
                 >
                   Eliminar
                 </AlertDialogAction>
