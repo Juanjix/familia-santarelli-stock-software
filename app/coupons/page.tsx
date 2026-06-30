@@ -50,14 +50,15 @@ function printTicket(coupon: Coupon, product: Product | undefined) {
     <meta charset="UTF-8"><title>Ticket ${coupon.code}</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      @page { size: 148mm 210mm; margin: 0; }
+      @page { size: 105mm 148mm; margin: 0; }
       body { font-family: Arial, sans-serif; font-size: 9pt; color: #111; }
       .ticket {
-        width: 145mm;
+        width: 100mm;
+        min-height: 136mm;
         padding: 3mm 4mm;
         display: flex;
         flex-direction: column;
-        gap: 1mm;
+        gap: 1.2mm;
       }
       .header { text-align: center; }
       .brand { font-size: 12pt; font-weight: bold; letter-spacing: 0.3px; }
@@ -79,7 +80,7 @@ function printTicket(coupon: Coupon, product: Product | undefined) {
       .label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2px; color: #666; min-width: 24mm; flex-shrink: 0; }
       .value { font-size: 9pt; font-weight: 600; word-break: break-word; }
       .obs-box { border: 0.5px solid #bbb; border-radius: 1mm; padding: 1mm 2mm; min-height: 7mm; white-space: pre-wrap; font-size: 8.5pt; }
-      .signature { margin-top: 2mm; padding-top: 2mm; text-align: center; }
+      .signature { margin-top: auto; padding-top: 2mm; text-align: center; }
       .signature-line { border-top: 0.7px solid #000; margin: 0 8mm; }
       .signature-label { font-size: 7pt; color: #555; margin-top: 0.8mm; }
     </style>
