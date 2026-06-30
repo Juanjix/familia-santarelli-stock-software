@@ -51,38 +51,37 @@ function printTicket(coupon: Coupon, product: Product | undefined) {
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       @page { size: 148mm 210mm; margin: 0; }
-      body { font-family: Arial, sans-serif; font-size: 10pt; color: #111; }
+      body { font-family: Arial, sans-serif; font-size: 9pt; color: #111; }
       .ticket {
-        width: 148mm;
-        min-height: 210mm;
-        padding: 10mm;
+        width: 145mm;
+        padding: 3mm 4mm;
         display: flex;
         flex-direction: column;
-        gap: 3mm;
+        gap: 1mm;
       }
       .header { text-align: center; }
-      .brand { font-size: 15pt; font-weight: bold; letter-spacing: 0.5px; }
-      .subtitle { font-size: 12pt; font-weight: bold; margin-top: 1mm; letter-spacing: 0.5px; }
+      .brand { font-size: 12pt; font-weight: bold; letter-spacing: 0.3px; }
+      .subtitle { font-size: 11pt; font-weight: bold; margin-top: 0.5mm; letter-spacing: 0.3px; }
       .ticket-number {
         font-family: monospace;
-        font-size: 26pt;
+        font-size: 14pt;
         font-weight: bold;
         text-align: center;
-        letter-spacing: 1.5px;
-        margin: 3mm 0 4mm;
-        padding: 3mm 0;
-        border: 1.5px solid #000;
-        border-radius: 2mm;
+        letter-spacing: 1px;
+        margin: 1mm 0 1.5mm;
+        padding: 0.8mm 0;
+        border: 1px solid #000;
+        border-radius: 1mm;
       }
-      .divider { border-top: 0.6px solid #bbb; margin: 1mm 0; }
-      .section-title { font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: #777; font-weight: bold; margin-bottom: 1.5mm; }
-      .row { display: flex; gap: 3mm; align-items: baseline; margin-bottom: 0.8mm; }
-      .label { font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.3px; color: #666; min-width: 30mm; flex-shrink: 0; }
-      .value { font-size: 10.5pt; font-weight: 600; word-break: break-word; }
-      .obs-box { border: 0.6px solid #bbb; border-radius: 1.5mm; padding: 2mm 3mm; min-height: 16mm; white-space: pre-wrap; font-size: 9.5pt; }
-      .signature { margin-top: auto; padding-top: 8mm; text-align: center; }
-      .signature-line { border-top: 0.8px solid #000; margin: 0 10mm; }
-      .signature-label { font-size: 8.5pt; color: #555; margin-top: 1.5mm; }
+      .divider { border-top: 0.5px solid #bbb; margin: 0.5mm 0; }
+      .section-title { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.3px; color: #777; font-weight: bold; margin-bottom: 0.6mm; }
+      .row { display: flex; gap: 2mm; align-items: baseline; margin-bottom: 0.3mm; }
+      .label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2px; color: #666; min-width: 24mm; flex-shrink: 0; }
+      .value { font-size: 9pt; font-weight: 600; word-break: break-word; }
+      .obs-box { border: 0.5px solid #bbb; border-radius: 1mm; padding: 1mm 2mm; min-height: 7mm; white-space: pre-wrap; font-size: 8.5pt; }
+      .signature { margin-top: 2mm; padding-top: 2mm; text-align: center; }
+      .signature-line { border-top: 0.7px solid #000; margin: 0 8mm; }
+      .signature-label { font-size: 7pt; color: #555; margin-top: 0.8mm; }
     </style>
     </head><body>
     <div class="ticket">
