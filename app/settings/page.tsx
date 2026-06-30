@@ -261,24 +261,35 @@ export default function SettingsPage() {
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
   const [supplierDialogName, setSupplierDialogName] = useState("")
+  const [supplierDialogGroup, setSupplierDialogGroup] = useState("")
+  const [supplierDialogCoefficient, setSupplierDialogCoefficient] = useState("")
   const [supplierDialogContact, setSupplierDialogContact] = useState("")
   const [supplierDialogActive, setSupplierDialogActive] = useState(true)
   const [savingSupplier, setSavingSupplier] = useState(false)
   const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null)
 
+  const supplierCoefficientValue = parseFloat(supplierDialogCoefficient)
+  const isSupplierFormValid = !!supplierDialogName.trim() &&
+    supplierDialogGroup.trim().length === 1 &&
+    !isNaN(supplierCoefficientValue) && supplierCoefficientValue > 0
+
   const handleSaveSupplier = async () => {
-    if (!supplierDialogName.trim()) return
+    if (!isSupplierFormValid) return
     setSavingSupplier(true)
     try {
       if (editingSupplier) {
         await updateSupplier(editingSupplier.id, {
           name: supplierDialogName.trim(),
+          price_group: supplierDialogGroup.trim().toUpperCase(),
+          coefficient: supplierCoefficientValue,
           contact: supplierDialogContact.trim() || null,
           is_active: supplierDialogActive,
         })
       } else {
         await addSupplier({
           name: supplierDialogName.trim(),
+          price_group: supplierDialogGroup.trim().toUpperCase(),
+          coefficient: supplierCoefficientValue,
           contact: supplierDialogContact.trim() || null,
         })
       }
@@ -290,12 +301,15 @@ export default function SettingsPage() {
   }
 
   const resetSupplierForm = () => {
-    setSupplierDialogName(""); setSupplierDialogContact(""); setSupplierDialogActive(true); setEditingSupplier(null)
+    setSupplierDialogName(""); setSupplierDialogGroup(""); setSupplierDialogCoefficient("")
+    setSupplierDialogContact(""); setSupplierDialogActive(true); setEditingSupplier(null)
   }
 
   const openEditSupplier = (supplier: Supplier) => {
     setEditingSupplier(supplier)
     setSupplierDialogName(supplier.name)
+    setSupplierDialogGroup(supplier.price_group)
+    setSupplierDialogCoefficient(String(supplier.coefficient))
     setSupplierDialogContact(supplier.contact || "")
     setSupplierDialogActive(supplier.is_active)
     setSupplierDialogOpen(true)
@@ -1062,6 +1076,29 @@ export default function SettingsPage() {
                         autoFocus
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>Grupo <span className="text-destructive">*</span></Label>
+                        <Input
+                          value={supplierDialogGroup}
+                          onChange={(e) => setSupplierDialogGroup(e.target.value.toUpperCase().slice(0, 1))}
+                          placeholder="Ej: A"
+                          maxLength={1}
+                          className="uppercase"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Coeficiente <span className="text-destructive">*</span></Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={supplierDialogCoefficient}
+                          onChange={(e) => setSupplierDialogCoefficient(e.target.value)}
+                          placeholder="Ej: 1.25"
+                        />
+                      </div>
+                    </div>
                     <div className="grid gap-2">
                       <Label>Descripción / Contacto <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
                       <Textarea
@@ -1080,7 +1117,7 @@ export default function SettingsPage() {
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => { setSupplierDialogOpen(false); resetSupplierForm() }}>Cancelar</Button>
-                    <Button onClick={handleSaveSupplier} disabled={!supplierDialogName.trim() || savingSupplier}>
+                    <Button onClick={handleSaveSupplier} disabled={!isSupplierFormValid || savingSupplier}>
                       {savingSupplier ? "Guardando..." : editingSupplier ? "Guardar Cambios" : "Crear Proveedor"}
                     </Button>
                   </DialogFooter>
@@ -1099,7 +1136,11 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-3">
                         <div className={`h-3 w-3 shrink-0 rounded-full ${supplier.is_active !== false ? "bg-green-500" : "bg-muted"}`} />
                         <div>
-                          <p className="font-medium">{supplier.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{supplier.name}</p>
+                            <Badge variant="outline" className="text-xs">Grupo {supplier.price_group}</Badge>
+                            <Badge variant="outline" className="text-xs">Coef. {supplier.coefficient}</Badge>
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {productCount === 0 ? "Sin productos" : `${productCount} producto${productCount !== 1 ? "s" : ""}`}
                             {supplier.contact && ` · ${supplier.contact}`}

@@ -451,15 +451,17 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .insert({
         name: supplier.name || "",
         contact: supplier.contact || null,
+        price_group: (supplier.price_group || "A").toUpperCase().slice(0, 1),
+        coefficient: supplier.coefficient ?? 1,
       })
       .select()
       .single()
-    
+
     if (error) {
       console.error("Error adding supplier:", error)
       return null
     }
-    
+
     setSuppliers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     return data
   }, [supabase])
@@ -470,6 +472,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .update({
         ...(updates.name !== undefined && { name: updates.name }),
         ...(updates.contact !== undefined && { contact: updates.contact }),
+        ...(updates.price_group !== undefined && { price_group: updates.price_group.toUpperCase().slice(0, 1) }),
+        ...(updates.coefficient !== undefined && { coefficient: updates.coefficient }),
         ...(updates.is_active !== undefined && { is_active: updates.is_active }),
       })
       .eq("id", id)
