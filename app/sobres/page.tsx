@@ -930,7 +930,7 @@ interface EnvelopeDetailDialogProps {
 }
 
 function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onPrint }: EnvelopeDetailDialogProps) {
-  const { jewelers, warehouses, fetchEnvelopeEvents, sendTransfer, confirmTransferReceipt } = useInventory()
+  const { jewelers, employees, warehouses, fetchEnvelopeEvents, sendTransfer, confirmTransferReceipt } = useInventory()
   const [events, setEvents] = useState<EnvelopeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
 
@@ -1197,6 +1197,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
         </Button>
         <Button size="sm"
           disabled={actionSaving ||
+            !actionOperator ||
             (activeAction === "transfer" && !actionWarehouseId) ||
             (activeAction === "deliver" && !actionDeliveredBy.trim())}
           onClick={handleAction}>
@@ -1292,19 +1293,30 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
             </div>
           </section>
 
-          {/* Selector de operador — persiste en localStorage, compartido por ambas tarjetas de acciones */}
+          {/* Selector de operador — obligatorio para cualquier acción, persiste en localStorage */}
           {!editing && (quoteActions.length > 0 || otherActions.length > 0) && (
             <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 border border-border">
-              <span className="text-xs text-muted-foreground shrink-0">Operador:</span>
-              <Input
-                value={actionOperator}
-                onChange={e => {
-                  setActionOperator(e.target.value)
-                  localStorage.setItem("sobres_operator", e.target.value)
+              <span className="text-xs text-muted-foreground shrink-0">
+                Operador <span className="text-destructive">*</span>:
+              </span>
+              <Select
+                value={actionOperator || "none"}
+                onValueChange={v => {
+                  const value = v === "none" ? "" : v
+                  setActionOperator(value)
+                  localStorage.setItem("sobres_operator", value)
                 }}
-                className="h-7 text-xs border-0 bg-transparent p-0 focus-visible:ring-0 flex-1"
-                placeholder="Tu nombre..."
-              />
+              >
+                <SelectTrigger className="h-7 text-xs border-0 bg-transparent px-0 focus:ring-0 flex-1">
+                  <SelectValue placeholder="Seleccionar empleado..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Seleccionar...</SelectItem>
+                  {employees.filter(e => e.is_active).map(e => (
+                    <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
