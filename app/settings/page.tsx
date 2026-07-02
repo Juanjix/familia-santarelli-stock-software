@@ -328,26 +328,34 @@ export default function SettingsPage() {
   const [jewelerDialogType, setJewelerDialogType] = useState<WorkerType>("jeweler")
   const [jewelerDialogActive, setJewelerDialogActive] = useState(true)
   const [savingJeweler, setSavingJeweler] = useState(false)
+  const [jewelerSaveError, setJewelerSaveError] = useState<string | null>(null)
   const [deletingJeweler, setDeletingJeweler] = useState<Jeweler | null>(null)
 
   const handleSaveJeweler = async () => {
     if (!jewelerDialogName.trim()) return
     setSavingJeweler(true)
+    setJewelerSaveError(null)
     try {
       if (editingJeweler) {
         await updateJeweler(editingJeweler.id, { name: jewelerDialogName.trim(), worker_type: jewelerDialogType, is_active: jewelerDialogActive })
+        resetJewelerForm()
+        setJewelerDialogOpen(false)
       } else {
-        await addJeweler(jewelerDialogName.trim(), jewelerDialogType)
+        const created = await addJeweler(jewelerDialogName.trim(), jewelerDialogType)
+        if (!created) {
+          setJewelerSaveError("No se pudo guardar el especialista. Verificá que la base de datos esté accesible e intentá de nuevo.")
+          return
+        }
+        resetJewelerForm()
+        setJewelerDialogOpen(false)
       }
-      resetJewelerForm()
-      setJewelerDialogOpen(false)
     } finally {
       setSavingJeweler(false)
     }
   }
 
   const resetJewelerForm = () => {
-    setJewelerDialogName(""); setJewelerDialogType("jeweler"); setJewelerDialogActive(true); setEditingJeweler(null)
+    setJewelerDialogName(""); setJewelerDialogType("jeweler"); setJewelerDialogActive(true); setEditingJeweler(null); setJewelerSaveError(null)
   }
 
   const openEditJeweler = (j: Jeweler) => {
@@ -1260,6 +1268,11 @@ export default function SettingsPage() {
                           <Switch checked={jewelerDialogActive} onCheckedChange={setJewelerDialogActive} id="jeweler-active" />
                           <Label htmlFor="jeweler-active">Activo</Label>
                         </div>
+                      )}
+                      {jewelerSaveError && (
+                        <p className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+                          {jewelerSaveError}
+                        </p>
                       )}
                     </div>
                     <DialogFooter>

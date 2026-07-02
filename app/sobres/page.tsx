@@ -205,7 +205,7 @@ function workerTypeForProduct(productType: "jewelry" | "watch"): WorkerType {
 
 function getAvailableWorkers(jewelers: Jeweler[], productType: "jewelry" | "watch"): Jeweler[] {
   const type = workerTypeForProduct(productType)
-  return jewelers.filter(j => j.is_active && j.worker_type === type)
+  return jewelers.filter(j => (j.is_active !== false) && (j.worker_type ?? 'jeweler') === type)
 }
 
 const MATERIAL_OPTIONS = ["ORO", "PLATA", "COBRE", "OTROS"] as const
@@ -838,8 +838,15 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
               {(() => {
                 const availableWorkers = getAvailableWorkers(jewelers, form.productType)
                 const workerLabel = form.productType === "watch" ? "relojeros" : "joyeros"
+                const workerTypeLabel = form.productType === "watch" ? "Relojero" : "Joyero"
                 if (availableWorkers.length === 0) {
-                  return <p className="text-sm text-muted-foreground">No hay {workerLabel} disponibles.</p>
+                  return (
+                    <p className="text-sm text-muted-foreground">
+                      No hay {workerLabel} activos.{" "}
+                      <a href="/settings" className="underline text-foreground">Agregar en Configuración</a>
+                      {" "}(especialidad: "{workerTypeLabel}").
+                    </p>
+                  )
                 }
                 return (
                   <Select value={form.jewelerId || "none"} onValueChange={(v) => set("jewelerId", v === "none" ? "" : v)}>
@@ -1146,11 +1153,16 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
       {activeAction === "send_to_jeweler" && (() => {
         const availableWorkers = getAvailableWorkers(jewelers, envelope.product_type)
         const workerLabel = envelope.product_type === "watch" ? "relojeros" : "joyeros"
+        const workerTypeLabel = envelope.product_type === "watch" ? "Relojero" : "Joyero"
         return (
           <div className="grid gap-1.5">
             <Label className="text-xs">Especialista <span className="text-muted-foreground">(Opcional)</span></Label>
             {availableWorkers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay {workerLabel} disponibles.</p>
+              <p className="text-sm text-muted-foreground">
+                No hay {workerLabel} activos. Agregá uno en{" "}
+                <a href="/settings" className="underline text-foreground">Configuración → Especialistas</a>
+                {" "}con especialidad "{workerTypeLabel}".
+              </p>
             ) : (
               <Select value={actionJewelerId || "none"} onValueChange={v => setActionJewelerId(v === "none" ? "" : v)}>
                 <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
