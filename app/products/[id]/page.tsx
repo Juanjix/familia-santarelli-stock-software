@@ -116,7 +116,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
-  const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [adjustType, setAdjustType] = useState<"in" | "out">("in")
   const [success, setSuccess] = useState<string | null>(null)
   
@@ -130,8 +129,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   
   const [quantity, setQuantity] = useState("")
   const [selectedWarehouse, setSelectedWarehouse] = useState("")
-  const [fromWarehouse, setFromWarehouse] = useState("")
-  const [toWarehouse, setToWarehouse] = useState("")
   const [notes, setNotes] = useState("")
 
   if (!product) {
@@ -180,22 +177,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     showSuccess(`${adjustType === "in" ? "Entrada" : "Salida"} de ${quantity} unidades registrada`)
   }
 
-  const openTransferDialog = () => {
-    setQuantity("")
-    setFromWarehouse("")
-    setToWarehouse("")
-    setNotes("")
-    setTransferDialogOpen(true)
-  }
-
-  const handleTransfer = () => {
-    if (!fromWarehouse || !toWarehouse || !quantity) return
-    transferStock(product.id, fromWarehouse, toWarehouse, parseInt(quantity), notes || undefined)
-    setTransferDialogOpen(false)
-    showSuccess(`Transferencia de ${quantity} unidades realizada`)
-  }
-
-  const showSuccess = (message: string) => {
+const showSuccess = (message: string) => {
     setSuccess(message)
     setTimeout(() => setSuccess(null), 3000)
   }
@@ -451,9 +433,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                   <Minus className="mr-2 h-4 w-4" />
                   Salida de Stock
                 </Button>
-                <Button variant="outline" className="w-full justify-start" onClick={openTransferDialog}>
-                  <ArrowLeftRight className="mr-2 h-4 w-4" />
-                  Transferir Stock
+                <Button variant="outline" className="w-full justify-start" asChild>
+                  <Link href="/transfers">
+                    <ArrowLeftRight className="mr-2 h-4 w-4" />
+                    Transferir Stock
+                  </Link>
                 </Button>
                 <Button variant="outline" className="w-full justify-start" asChild>
                   <Link href="/labels">
@@ -608,51 +592,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         </DialogContent>
       </Dialog>
 
-      {/* Transfer Stock Dialog */}
-      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Transferir Stock</DialogTitle>
-            <DialogDescription>{product.name}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label>Desde depósito</Label>
-              <Select value={fromWarehouse} onValueChange={setFromWarehouse}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar origen" /></SelectTrigger>
-                <SelectContent>
-                  {warehouses.filter(w => w.isActive).map(warehouse => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Hacia depósito</Label>
-              <Select value={toWarehouse} onValueChange={setToWarehouse}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar destino" /></SelectTrigger>
-                <SelectContent>
-                  {warehouses.filter(w => w.isActive && w.id !== fromWarehouse).map(warehouse => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Cantidad</Label>
-              <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Notas (opcional)</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Agregar notas..." />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleTransfer} disabled={!fromWarehouse || !toWarehouse || !quantity}>Transferir</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

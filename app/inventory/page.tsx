@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import Link from "next/link"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
@@ -250,14 +251,11 @@ export default function InventoryPage() {
                       <Minus className="h-4 w-4 mr-1" />
                       Salida
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 h-9"
-                      onClick={() => openTransferDialog(product.id)}
-                    >
-                      <ArrowLeftRight className="h-4 w-4 mr-1" />
-                      Mover
+                    <Button variant="outline" size="sm" className="flex-1 h-9" asChild>
+                      <Link href="/transfers">
+                        <ArrowLeftRight className="h-4 w-4 mr-1" />
+                        Mover
+                      </Link>
                     </Button>
                   </div>
                 </CardContent>
@@ -348,13 +346,10 @@ export default function InventoryPage() {
                         >
                           <Minus className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openTransferDialog(product.id)}
-                          title="Transferir"
-                        >
-                          <ArrowLeftRight className="h-4 w-4" />
+                        <Button variant="ghost" size="sm" title="Transferir" asChild>
+                          <Link href="/transfers">
+                            <ArrowLeftRight className="h-4 w-4" />
+                          </Link>
                         </Button>
                       </div>
                     </TableCell>
