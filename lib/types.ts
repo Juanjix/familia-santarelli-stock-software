@@ -284,6 +284,49 @@ export interface Coupon {
 
 export type Material = "Oro" | "Plata" | "Acero" | "Mixto"
 
+// ── Módulo Transferencias de Stock ─────────────────────────────────────────
+export type StockTransferStatus = 'in_transit' | 'completed' | 'with_differences' | 'cancelled'
+
+export interface StockTransfer {
+  id: string
+  number: string
+  from_warehouse_id: string
+  to_warehouse_id: string
+  status: StockTransferStatus
+  created_by: string
+  dispatched_at: string
+  received_by: string | null
+  received_at: string | null
+  incident_notes: string | null
+  created_at: string
+  updated_at: string
+  // Joined
+  from_warehouse?: { id: string; name: string }
+  to_warehouse?: { id: string; name: string }
+  items?: StockTransferItem[]
+}
+
+export interface StockTransferItem {
+  id: string
+  transfer_id: string
+  product_id: string
+  quantity_sent: number
+  quantity_received: number | null
+  created_at: string
+  // Joined
+  product?: Product
+}
+
+export interface StockTransferEvent {
+  id: string
+  transfer_id: string
+  event_type: string
+  title: string
+  detail: string | null
+  created_by: string
+  created_at: string
+}
+
 // Database response types
 export interface Database {
   public: {

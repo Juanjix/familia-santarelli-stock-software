@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   Boxes,
   Mail,
+  TruckIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -31,6 +32,7 @@ const navOperacion = [
 ]
 
 const navGestion = [
+  { name: "Transferencias", href: "/transfers", icon: TruckIcon },
   { name: "Movimientos", href: "/movements", icon: ArrowLeftRight },
   { name: "Reportes", href: "/reports", icon: BarChart3 },
 ]

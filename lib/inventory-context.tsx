@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, WorkerType, Employee, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, EnvelopeEvent, QuoteStatus } from "./types"
+import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, WorkerType, Employee, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, EnvelopeEvent, QuoteStatus, StockTransfer, StockTransferItem, StockTransferEvent } from "./types"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -125,6 +125,22 @@ interface InventoryContextType {
   fetchEnvelopeEvents: (envelopeId: string) => Promise<EnvelopeEvent[]>
   sendTransfer: (envelopeId: string, fromWarehouseId: string | null, toWarehouseId: string, sentBy?: string) => Promise<{ success: boolean; error?: string }>
   confirmTransferReceipt: (envelopeId: string, receivedBy?: string) => Promise<{ success: boolean; error?: string }>
+  // ── Stock Transfers ───────────────────────────────────────
+  createAndDispatchTransfer: (
+    fromWarehouseId: string,
+    toWarehouseId: string,
+    items: { productId: string; quantity: number }[],
+    createdBy: string
+  ) => Promise<{ success: boolean; transfer?: StockTransfer; error?: string }>
+  confirmStockTransfer: (
+    transferId: string,
+    receivedItems: { itemId: string; quantityReceived: number }[],
+    receivedBy: string,
+    incidentNotes?: string
+  ) => Promise<{ success: boolean; error?: string }>
+  cancelStockTransfer: (transferId: string, cancelledBy: string) => Promise<{ success: boolean; error?: string }>
+  fetchStockTransfers: (filters?: { status?: StockTransfer['status'] }) => Promise<StockTransfer[]>
+  fetchStockTransferEvents: (transferId: string) => Promise<StockTransferEvent[]>
 }
 
 const InventoryContext = createContext<InventoryContextType | null>(null)
@@ -989,6 +1005,227 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return (data || []) as EnvelopeEvent[]
   }, [supabase])
 
+  // ── Stock Transfers ──────────────────────────────────────────────────────────
+
+  const STOCK_TRANSFER_SELECT = `
+    *,
+    from_warehouse:warehouses!from_warehouse_id(id, name),
+    to_warehouse:warehouses!to_warehouse_id(id, name),
+    items:stock_transfer_items(
+      id, transfer_id, product_id, quantity_sent, quantity_received, created_at,
+      product:products(id, sku, name, category)
+    )
+  `
+
+  const fetchStockTransfers = useCallback(async (
+    filters?: { status?: StockTransfer['status'] }
+  ): Promise<StockTransfer[]> => {
+    let query = supabase
+      .from("stock_transfers")
+      .select(STOCK_TRANSFER_SELECT)
+      .order("dispatched_at", { ascending: false })
+    if (filters?.status) query = query.eq("status", filters.status)
+    const { data, error } = await query
+    if (error) { console.error("Error fetching stock transfers:", error); return [] }
+    return (data || []) as StockTransfer[]
+  }, [supabase])
+
+  const fetchStockTransferEvents = useCallback(async (transferId: string): Promise<StockTransferEvent[]> => {
+    const { data, error } = await supabase
+      .from("stock_transfer_events")
+      .select("*")
+      .eq("transfer_id", transferId)
+      .order("created_at")
+    if (error) { console.error("Error fetching stock transfer events:", error); return [] }
+    return (data || []) as StockTransferEvent[]
+  }, [supabase])
+
+  // Crea la cabecera, llama update_stock(exit) por cada item, registra los eventos.
+  // El stock sale del origen en este momento; el destino lo recibe al confirmar.
+  const createAndDispatchTransfer = useCallback(async (
+    fromWarehouseId: string,
+    toWarehouseId: string,
+    items: { productId: string; quantity: number }[],
+    createdBy: string
+  ): Promise<{ success: boolean; transfer?: StockTransfer; error?: string }> => {
+    if (!items.length) return { success: false, error: "Debe incluir al menos un producto." }
+
+    // Generate transfer number via DB function
+    const { data: numRow, error: numError } = await supabase.rpc("next_stock_transfer_number")
+    if (numError) { console.error("Error getting transfer number:", numError); return { success: false, error: numError.message } }
+    const number = numRow as string
+
+    // Create transfer header
+    const { data: transfer, error: transferError } = await supabase
+      .from("stock_transfers")
+      .insert({ number, from_warehouse_id: fromWarehouseId, to_warehouse_id: toWarehouseId, created_by: createdBy, status: 'in_transit' })
+      .select()
+      .single()
+    if (transferError) { console.error("Error creating stock_transfer:", transferError); return { success: false, error: transferError.message } }
+
+    // Insert items
+    const { error: itemsError } = await supabase.from("stock_transfer_items").insert(
+      items.map(i => ({ transfer_id: transfer.id, product_id: i.productId, quantity_sent: i.quantity }))
+    )
+    if (itemsError) {
+      // Rollback: delete the header
+      await supabase.from("stock_transfers").delete().eq("id", transfer.id)
+      console.error("Error inserting transfer items:", itemsError)
+      return { success: false, error: itemsError.message }
+    }
+
+    // Deduct stock from origin (exit per item) using existing RPC
+    for (const item of items) {
+      const { error: stockError } = await supabase.rpc("update_stock", {
+        p_product_id: item.productId,
+        p_warehouse_id: fromWarehouseId,
+        p_quantity: item.quantity,
+        p_type: "exit",
+        p_reason: `Transferencia ${number} — salida`,
+        p_user_name: createdBy,
+        p_to_warehouse_id: null,
+      })
+      if (stockError) {
+        console.error(`Error deducting stock for product ${item.productId}:`, stockError)
+        // Mark transfer as cancelled — stock for previously processed items was already deducted;
+        // operator must reconcile manually. Surface the error clearly.
+        await supabase.from("stock_transfers").update({ status: 'cancelled' }).eq("id", transfer.id)
+        return { success: false, error: `Stock insuficiente o error al descontar producto. ${stockError.message}` }
+      }
+    }
+
+    // Log initial event
+    const { data: fromW } = await supabase.from("warehouses").select("name").eq("id", fromWarehouseId).single()
+    const { data: toW } = await supabase.from("warehouses").select("name").eq("id", toWarehouseId).single()
+    await supabase.from("stock_transfer_events").insert({
+      transfer_id: transfer.id,
+      event_type: 'transfer_dispatched',
+      title: `Transferencia despachada`,
+      detail: `${items.length} producto${items.length !== 1 ? 's' : ''} enviados de ${fromW?.name || 'origen'} a ${toW?.name || 'destino'}`,
+      created_by: createdBy,
+    })
+
+    await refreshData()
+    // Re-fetch the specific transfer to return it with joins
+    const { data: fullTransfer } = await supabase.from("stock_transfers").select(STOCK_TRANSFER_SELECT).eq("id", transfer.id).single()
+    return { success: true, transfer: fullTransfer as StockTransfer }
+  }, [supabase, refreshData]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Confirma la recepción producto a producto. Si qty_received < qty_sent en algún item → with_differences.
+  // El stock entra al destino con la cantidad REAL recibida.
+  const confirmStockTransfer = useCallback(async (
+    transferId: string,
+    receivedItems: { itemId: string; quantityReceived: number }[],
+    receivedBy: string,
+    incidentNotes?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const { data: transfer, error: findError } = await supabase
+      .from("stock_transfers")
+      .select(`*, items:stock_transfer_items(*)`)
+      .eq("id", transferId)
+      .single()
+    if (findError || !transfer) return { success: false, error: "No se encontró la transferencia." }
+    if (transfer.status !== 'in_transit') return { success: false, error: "Solo se pueden confirmar transferencias en tránsito." }
+
+    const receivedAt = new Date().toISOString()
+    const hasDifferences = receivedItems.some(ri => {
+      const sent = (transfer.items as StockTransferItem[]).find(i => i.id === ri.itemId)?.quantity_sent ?? 0
+      return ri.quantityReceived < sent
+    })
+    const newStatus = hasDifferences ? 'with_differences' : 'completed'
+
+    // Update each item with quantity_received
+    for (const ri of receivedItems) {
+      const { error } = await supabase
+        .from("stock_transfer_items")
+        .update({ quantity_received: ri.quantityReceived })
+        .eq("id", ri.itemId)
+      if (error) { console.error("Error updating transfer item:", error); return { success: false, error: error.message } }
+    }
+
+    // Update transfer header
+    const { error: headerError } = await supabase
+      .from("stock_transfers")
+      .update({ status: newStatus, received_by: receivedBy, received_at: receivedAt, incident_notes: incidentNotes || null, updated_at: receivedAt })
+      .eq("id", transferId)
+    if (headerError) { console.error("Error updating stock_transfer status:", headerError); return { success: false, error: headerError.message } }
+
+    // Add stock to destination for each item (quantity RECEIVED, not sent)
+    for (const ri of receivedItems) {
+      if (ri.quantityReceived <= 0) continue
+      const item = (transfer.items as StockTransferItem[]).find(i => i.id === ri.itemId)
+      if (!item) continue
+      const { error: stockError } = await supabase.rpc("update_stock", {
+        p_product_id: item.product_id,
+        p_warehouse_id: transfer.to_warehouse_id,
+        p_quantity: ri.quantityReceived,
+        p_type: "entry",
+        p_reason: `Transferencia ${transfer.number} — recepción`,
+        p_user_name: receivedBy,
+        p_to_warehouse_id: null,
+      })
+      if (stockError) console.error(`Error crediting stock for item ${ri.itemId}:`, stockError)
+    }
+
+    // Log event
+    const eventTitle = newStatus === 'completed' ? 'Recepción confirmada — sin diferencias' : 'Recepción confirmada — con diferencias'
+    await supabase.from("stock_transfer_events").insert({
+      transfer_id: transferId,
+      event_type: newStatus === 'completed' ? 'transfer_completed' : 'transfer_differences',
+      title: eventTitle,
+      detail: incidentNotes || null,
+      created_by: receivedBy,
+    })
+
+    await refreshData()
+    return { success: true }
+  }, [supabase, refreshData])
+
+  // Cancela una transferencia en tránsito: devuelve el stock al origen.
+  const cancelStockTransfer = useCallback(async (
+    transferId: string,
+    cancelledBy: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const { data: transfer, error: findError } = await supabase
+      .from("stock_transfers")
+      .select(`*, items:stock_transfer_items(*)`)
+      .eq("id", transferId)
+      .single()
+    if (findError || !transfer) return { success: false, error: "No se encontró la transferencia." }
+    if (transfer.status !== 'in_transit') return { success: false, error: "Solo se pueden cancelar transferencias en tránsito." }
+
+    // Return stock to origin
+    for (const item of (transfer.items as StockTransferItem[])) {
+      const { error: stockError } = await supabase.rpc("update_stock", {
+        p_product_id: item.product_id,
+        p_warehouse_id: transfer.from_warehouse_id,
+        p_quantity: item.quantity_sent,
+        p_type: "entry",
+        p_reason: `Transferencia ${transfer.number} cancelada — devolución`,
+        p_user_name: cancelledBy,
+        p_to_warehouse_id: null,
+      })
+      if (stockError) console.error(`Error returning stock for item ${item.id}:`, stockError)
+    }
+
+    const { error: updateError } = await supabase
+      .from("stock_transfers")
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq("id", transferId)
+    if (updateError) return { success: false, error: updateError.message }
+
+    await supabase.from("stock_transfer_events").insert({
+      transfer_id: transferId,
+      event_type: 'transfer_cancelled',
+      title: 'Transferencia cancelada',
+      detail: 'Stock devuelto al depósito de origen',
+      created_by: cancelledBy,
+    })
+
+    await refreshData()
+    return { success: true }
+  }, [supabase, refreshData])
+
   return (
     <InventoryContext.Provider value={{
       products,
@@ -1047,6 +1284,11 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       fetchEnvelopeEvents,
       sendTransfer,
       confirmTransferReceipt,
+      createAndDispatchTransfer,
+      confirmStockTransfer,
+      cancelStockTransfer,
+      fetchStockTransfers,
+      fetchStockTransferEvents,
     }}>
       {children}
     </InventoryContext.Provider>

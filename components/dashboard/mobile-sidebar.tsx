@@ -16,6 +16,7 @@ import {
   Settings,
   Boxes,
   X,
+  TruckIcon,
 } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
@@ -25,10 +26,12 @@ const navOperacion = [
   { name: "Escanear", href: "/scan", icon: ScanLine },
   { name: "Productos", href: "/products", icon: Package },
   { name: "Inventario", href: "/inventory", icon: Boxes },
+  { name: "Sobres", href: "/sobres", icon: Boxes },
   { name: "Ticket de Cambio", href: "/coupons", icon: Ticket },
 ]
 
 const navGestion = [
+  { name: "Transferencias", href: "/transfers", icon: TruckIcon },
   { name: "Movimientos", href: "/movements", icon: ArrowLeftRight },
   { name: "Reportes", href: "/reports", icon: BarChart3 },
 ]
