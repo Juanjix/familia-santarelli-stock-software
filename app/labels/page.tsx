@@ -28,9 +28,15 @@ import { Search, Printer, Tags, Barcode } from "lucide-react"
 // Etiqueta física real: rollo 80×10mm
 const LABEL_W_MM = 80
 const LABEL_H_MM = 10
-// Distribución de zonas en mm — suma exacta 80mm
+// Offset izquierdo para saltar el rabito (zona sin adhesivo al inicio de
+// cada etiqueta). El origen físico del rollo incluye el rabito; este valor
+// empuja el origen de impresión al inicio del área adhesiva.
+// Ajustar si el contenido sigue apareciendo en el rabito o queda muy adentro.
+const PRINT_OFFSET_LEFT_MM = 5
+// Distribución de zonas en mm (sobre el área adhesiva útil)
+// LEFT_ZONE_MM + RIGHT_ZONE_MM = LABEL_W_MM - PRINT_OFFSET_LEFT_MM
 const LEFT_ZONE_MM  = 23   // zona izquierda (dobla): precio + grupo
-const RIGHT_ZONE_MM = 57   // zona derecha: solo barcode
+const RIGHT_ZONE_MM = 52   // zona derecha: solo barcode (57 - 5 del offset)
 // Padding interno del contenedor del barcode
 const BARCODE_PAD_V_MM = 2   // arriba y abajo
 const BARCODE_PAD_L_MM = 2   // izquierda (desplaza barcode a la izquierda)
@@ -287,13 +293,13 @@ export default function LabelsPage() {
 
             @page {
               size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm;
-              margin: 0;
+              margin: 0 0 0 ${PRINT_OFFSET_LEFT_MM}mm;
             }
 
             body { font-family: Arial, sans-serif; background: #fff; }
 
             .label {
-              width: ${LABEL_W_MM}mm;
+              width: ${LABEL_W_MM - PRINT_OFFSET_LEFT_MM}mm;
               height: ${LABEL_H_MM}mm;
               display: flex;
               align-items: stretch;
