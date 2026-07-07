@@ -25,17 +25,19 @@ import {
 } from "@/components/ui/dialog"
 import { Search, Printer, Tags, Barcode } from "lucide-react"
 
-// Etiqueta física real utilizada por la joyería (ver plano técnico): banda
-// horizontal angosta, NO el formato vertical 56×25mm usado anteriormente.
+// Etiqueta física real: rollo 80mm × 10mm, área útil imprimible 80 × 8.5mm
+// (el driver TSC confirma 80.00 × 8.50 mm como superficie real de impresión).
 const LABEL_W_MM = 80
-const LABEL_H_MM = 10
+const LABEL_H_MM = 8.5
 
 const BARCODE_OPTIONS = {
   format: "CODE128",
   width: 2,
-  height: 60,
-  displayValue: false,
-  margin: 0,
+  height: 30,
+  displayValue: true,
+  fontSize: 7,
+  textMargin: 1,
+  margin: 2,
   background: "#ffffff",
   lineColor: "#000000",
 } as const
@@ -274,6 +276,7 @@ export default function LabelsPage() {
             .label {
               width: ${LABEL_W_MM}mm;
               height: ${LABEL_H_MM}mm;
+              /* 8.5mm = área útil real confirmada por el driver TSC */
               display: flex;
               align-items: stretch;
               overflow: hidden;
