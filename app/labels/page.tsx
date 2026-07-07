@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import JsBarcode from "jsbarcode"
 import { useInventory } from "@/lib/inventory-context"
 import type { Product, Category, CategoryAttribute } from "@/lib/types"
@@ -25,21 +25,10 @@ import {
 } from "@/components/ui/dialog"
 import { Search, Printer, Tags, Barcode } from "lucide-react"
 
-// Etiqueta física real: rollo 80×10mm
+// Etiqueta física real utilizada por la joyería (ver plano técnico): banda
+// horizontal angosta, NO el formato vertical 56×25mm usado anteriormente.
 const LABEL_W_MM = 80
 const LABEL_H_MM = 10
-// Offset izquierdo para saltar el rabito (zona sin adhesivo al inicio de
-// cada etiqueta). El origen físico del rollo incluye el rabito; este valor
-// empuja el origen de impresión al inicio del área adhesiva.
-// Ajustar si el contenido sigue apareciendo en el rabito o queda muy adentro.
-const PRINT_OFFSET_LEFT_MM = 5
-// Distribución de zonas en mm (sobre el área adhesiva útil)
-// LEFT_ZONE_MM + RIGHT_ZONE_MM = LABEL_W_MM - PRINT_OFFSET_LEFT_MM
-const LEFT_ZONE_MM  = 23   // zona izquierda (dobla): precio + grupo
-const RIGHT_ZONE_MM = 52   // zona derecha: solo barcode (57 - 5 del offset)
-// Padding interno del contenedor del barcode
-const BARCODE_PAD_V_MM = 2   // arriba y abajo
-const BARCODE_PAD_L_MM = 2   // izquierda (desplaza barcode a la izquierda)
 
 const BARCODE_OPTIONS = {
   format: "CODE128",
@@ -109,82 +98,66 @@ function BarcodeCanvas({ code, className }: { code: string; className?: string }
   return <canvas ref={canvasRef} className={className} />
 }
 
-// Barcode como <img> (mismo dataURL que la impresión) — se escala
-// correctamente con height: 100%; width: auto a diferencia de <canvas>.
-function BarcodeImg({ code, style }: { code: string; style?: React.CSSProperties }) {
-  const [src, setSrc] = useState<string | null>(null)
-
-  useEffect(() => {
-    setSrc(barcodeToDataURL(code))
-  }, [code])
-
-  if (!code || !src) return <span className="text-xs text-muted-foreground italic">Sin código</span>
-  return <img src={src} alt={code} style={{ display: "block", ...style }} />
-}
-
-// Vista previa a escala — layout idéntico al CSS de impresión, en px×scale.
-// scale=6 → 1mm = 6px. Mismo split 23mm | 57mm, mismo padding del barcode.
+// Vista previa a escala — dos zonas: izquierda (Precio + Grupo) | derecha (Barcode).
+// Layout y proporciones idénticas a lo que se imprime.
 function LabelPreview({ product, scale = 6 }: {
   product: Product
   scale?: number
 }) {
   const code = product.barcode || ""
-  const w    = LABEL_W_MM   * scale   // 480px
-  const h    = LABEL_H_MM   * scale   // 60px
-  const lW   = LEFT_ZONE_MM * scale   // 138px
-  const rW   = RIGHT_ZONE_MM * scale  // 342px
-  const pvPx = BARCODE_PAD_V_MM * scale   // padding vertical en px
-  const plPx = BARCODE_PAD_L_MM * scale   // padding left en px
+  const w = LABEL_W_MM * scale
+  const h = LABEL_H_MM * scale
+  const leftW = 30 * scale       // ~30mm zona izquierda
   const price = product.sell_price != null ? product.sell_price : ""
   const group = product.supplier?.price_group || ""
 
   return (
-    <div style={{
-      width: `${w}px`,
-      height: `${h}px`,
-      display: "flex",
-      alignItems: "stretch",
-      border: "1px solid #e2e8f0",
-      background: "#ffffff",
-      boxSizing: "border-box",
-      fontFamily: "Arial, sans-serif",
-      overflow: "hidden",
-    }}>
-      {/* Zona izquierda 23mm: Precio + Grupo centrados */}
-      <div style={{
-        width: `${lW}px`,
+    <div
+      style={{
+        width: `${w}px`,
         height: `${h}px`,
+        display: "flex",
+        alignItems: "stretch",
+        border: "1px solid #e2e8f0",
+        background: "#ffffff",
+        boxSizing: "border-box",
+        fontFamily: "Arial, sans-serif",
+        overflow: "hidden",
+      }}
+    >
+      {/* Zona izquierda: Precio + Grupo centrados */}
+      <div style={{
+        width: `${leftW}px`,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         borderRight: "0.5px solid #ccc",
-        boxSizing: "border-box",
+        padding: `0 ${2 * scale / 6}px`,
       }}>
         <div style={{ fontSize: `${8 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1 }}>
           {price}
         </div>
         {group && (
-          <div style={{ fontSize: `${7 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1, marginTop: `${0.5 * scale / 6}px` }}>
+          <div style={{ fontSize: `${7 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1, marginTop: `${0.8 * scale / 6}px` }}>
             {group}
           </div>
         )}
       </div>
 
-      {/* Zona derecha 57mm: solo barcode, alineado a la izquierda */}
+      {/* Zona derecha: Barcode con margen interno (5mm der, 1.5mm arr/abj) */}
       <div style={{
-        width: `${rW}px`,
-        height: `${h}px`,
-        flexShrink: 0,
+        flex: 1,
         display: "flex",
         alignItems: "center",
-        justifyContent: "flex-start",
-        padding: `${pvPx}px 0 ${pvPx}px ${plPx}px`,
-        boxSizing: "border-box",
+        justifyContent: "center",
+        padding: `${1.5 * scale / 6}px ${5 * scale / 6}px ${1.5 * scale / 6}px ${2 * scale / 6}px`,
+        height: "100%",
+        minWidth: 0,
         overflow: "hidden",
       }}>
-        <BarcodeImg code={code} style={{ height: "100%", width: "auto" }} />
+        <BarcodeCanvas code={code} className="h-full w-auto" />
       </div>
     </div>
   )
@@ -293,13 +266,13 @@ export default function LabelsPage() {
 
             @page {
               size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm;
-              margin: 0 0 0 ${PRINT_OFFSET_LEFT_MM}mm;
+              margin: 0;
             }
 
             body { font-family: Arial, sans-serif; background: #fff; }
 
             .label {
-              width: ${LABEL_W_MM - PRINT_OFFSET_LEFT_MM}mm;
+              width: ${LABEL_W_MM}mm;
               height: ${LABEL_H_MM}mm;
               display: flex;
               align-items: stretch;
@@ -309,47 +282,45 @@ export default function LabelsPage() {
             .label:last-child { page-break-after: avoid; }
 
             .label-left {
-              width: ${LEFT_ZONE_MM}mm;
-              height: ${LABEL_H_MM}mm;
+              width: 30mm;
               flex-shrink: 0;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              border-right: 0.3px solid #ccc;
-              box-sizing: border-box;
+              border-right: 0.4px solid #ccc;
+              padding: 0 1.5mm;
             }
 
             .label-price {
-              font-size: 8pt;
+              font-size: 8.5pt;
               font-weight: 700;
               color: #000;
               line-height: 1;
             }
 
             .label-group {
-              font-size: 7pt;
+              font-size: 7.5pt;
               font-weight: 700;
               color: #000;
               line-height: 1;
-              margin-top: 0.5mm;
+              margin-top: 0.8mm;
             }
 
             .label-barcode {
-              width: ${RIGHT_ZONE_MM}mm;
-              height: ${LABEL_H_MM}mm;
-              flex-shrink: 0;
+              flex: 1;
               display: flex;
               align-items: center;
-              justify-content: flex-start;
-              padding: ${BARCODE_PAD_V_MM}mm 0 ${BARCODE_PAD_V_MM}mm ${BARCODE_PAD_L_MM}mm;
-              box-sizing: border-box;
+              justify-content: center;
+              height: 100%;
+              min-width: 0;
               overflow: hidden;
+              padding: 1.5mm 5mm 1.5mm 2mm;
             }
             .label-barcode img {
               height: 100%;
               width: auto;
-              display: block;
+              object-fit: contain;
             }
           </style>
         </head>
