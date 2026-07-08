@@ -16,13 +16,13 @@ export function buildLabelBatch(
   items: LabelItem[]
 ): string {
   const cmds: string[] = [
-    `HOME`,
     `SIZE ${profile.labelW} mm, ${profile.labelH} mm`,
     `GAP ${profile.gap} mm, 0 mm`,
     `DIRECTION 0`,
     `REFERENCE 0, 0`,
     `OFFSET 0 mm`,
     `SET TEAR ON`,
+    `SET BACKFEED ON`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
