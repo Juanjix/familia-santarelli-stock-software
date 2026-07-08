@@ -29,6 +29,9 @@ import { Search, Printer, Tags, Barcode } from "lucide-react"
 // (el driver TSC confirma 80.00 × 8.50 mm como superficie real de impresión).
 const LABEL_W_MM = 80
 const LABEL_H_MM = 8.5
+// Offset izquierdo calibrado físicamente: el driver TSC coloca el origen (0,0)
+// 20mm antes del inicio del área adhesiva útil. Este margen compensa ese desfase.
+const PRINT_MARGIN_LEFT_MM = 20
 
 const BARCODE_OPTIONS = {
   format: "CODE128",
@@ -268,15 +271,14 @@ export default function LabelsPage() {
 
             @page {
               size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm;
-              margin: 0;
+              margin: 0 0 0 ${PRINT_MARGIN_LEFT_MM}mm;
             }
 
             body { font-family: Arial, sans-serif; background: #fff; }
 
             .label {
-              width: ${LABEL_W_MM}mm;
+              width: ${LABEL_W_MM - PRINT_MARGIN_LEFT_MM}mm;
               height: ${LABEL_H_MM}mm;
-              /* 8.5mm = área útil real confirmada por el driver TSC */
               display: flex;
               align-items: stretch;
               overflow: hidden;
