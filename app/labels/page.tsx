@@ -23,16 +23,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Search, Printer, Tags, Barcode } from "lucide-react"
+import { Search, Printer, Tags, Barcode, Wifi, WifiOff, Loader2 } from "lucide-react"
 
-// Etiqueta física real: rollo 80mm × 10mm, área útil imprimible 80 × 8.5mm
-// (el driver TSC confirma 80.00 × 8.50 mm como superficie real de impresión).
+// ─── Dimensiones físicas ───────────────────────────────────────────────────────
 const LABEL_W_MM = 80
-const LABEL_H_MM = 8.5
-// Offset izquierdo calibrado físicamente: el driver TSC coloca el origen (0,0)
-// 20mm antes del inicio del área adhesiva útil. Este margen compensa ese desfase.
-const PRINT_MARGIN_LEFT_MM = 30
+const LABEL_H_MM = 10
 
+// ─── TSPL — coordenadas en dots (203 DPI ≈ 8 dots/mm) ────────────────────────
+// Todos los valores son ajustables. No tocar el layout HTML para cambiar
+// la posición de impresión: solo modificar estas constantes.
+const TSPL = {
+  labelW:    80,   // mm — ancho físico de la etiqueta
+  labelH:    10,   // mm — alto físico de la etiqueta
+  gap:        3,   // mm — gap entre etiquetas en el rollo
+  priceX:    10,   // dots — x del precio (~1.25mm desde borde izquierdo)
+  priceY:     8,   // dots — y del precio (~1mm desde borde superior)
+  groupY:    36,   // dots — y del grupo (~4.5mm desde borde superior)
+  font:      "2",  // fuente TSC interna: "2" = 12×20 dots = 1.5×2.5mm
+  barcodeX: 200,   // dots — x del barcode (~25mm desde borde izquierdo)
+  barcodeY:   3,   // dots — y del barcode (~0.4mm desde borde superior)
+  barcodeH:  45,   // dots — altura de las barras (~5.6mm)
+  barcodeN:   2,   // dots — módulo mínimo (narrow bar width)
+} as const
+
+// ─── BARCODE_OPTIONS — solo para el preview en pantalla ───────────────────────
+// La impresión real usa TSPL nativo. Estas opciones NO afectan lo que imprime.
 const BARCODE_OPTIONS = {
   format: "CODE128",
   width: 2,
@@ -45,10 +60,58 @@ const BARCODE_OPTIONS = {
   lineColor: "#000000",
 } as const
 
-// Atributo principal de un producto según su categoría (Talle, Largo, etc).
-// Regla: si el atributo es numérico (ej. Talle) se antepone su label
-// ("Talle 16"); si es texto libre (ej. Largo, donde el operador ya tipea
-// "45 cm") se imprime el valor solo, sin duplicar la unidad.
+// ─── Tipo global para QZ Tray ─────────────────────────────────────────────────
+declare global {
+  interface Window {
+    qz?: {
+      websocket: {
+        connect: (options?: object) => Promise<void>
+        disconnect: () => Promise<void>
+        isActive: () => boolean
+      }
+      printers: {
+        find: (query?: string) => Promise<string | string[]>
+      }
+      configs: {
+        create: (printer: string, options?: object) => object
+      }
+      print: (config: object, data: object[]) => Promise<void>
+      security: {
+        setCertificatePromise: (fn: (resolve: (v: string) => void) => void) => void
+        setSignaturePromise: (fn: (toSign: string) => (resolve: (v: string) => void) => void) => void
+      }
+    }
+  }
+}
+
+// ─── Generador de TSPL ────────────────────────────────────────────────────────
+// Produce el string de comandos nativos para un lote de etiquetas.
+function buildTSPL(items: Array<{ product: Product; quantity: number }>): string {
+  const cmds: string[] = [
+    `SIZE ${TSPL.labelW} mm, ${TSPL.labelH} mm`,
+    `GAP ${TSPL.gap} mm, 0 mm`,
+    `DIRECTION 0`,
+    `REFERENCE 0, 0`,
+    `OFFSET 0 mm`,
+    `SET TEAR ON`,
+  ]
+
+  for (const { product, quantity } of items) {
+    const code  = product.barcode ?? ""
+    const price = product.sell_price != null ? String(product.sell_price) : ""
+    const group = product.supplier?.price_group ?? ""
+
+    cmds.push("CLS")
+    if (price) cmds.push(`TEXT ${TSPL.priceX}, ${TSPL.priceY}, "${TSPL.font}", 0, 1, 1, "${price}"`)
+    if (group) cmds.push(`TEXT ${TSPL.priceX}, ${TSPL.groupY}, "${TSPL.font}", 0, 1, 1, "${group}"`)
+    if (code)  cmds.push(`BARCODE ${TSPL.barcodeX}, ${TSPL.barcodeY}, "128", ${TSPL.barcodeH}, 1, 0, ${TSPL.barcodeN}, ${TSPL.barcodeN}, "${code}"`)
+    cmds.push(`PRINT ${quantity}, 1`)
+  }
+
+  return cmds.join("\r\n") + "\r\n"
+}
+
+// ─── Helpers existentes (preview) ────────────────────────────────────────────
 function getPrimaryAttributeText(
   product: Product,
   categories: Category[],
@@ -59,108 +122,56 @@ function getPrimaryAttributeText(
     ? categories.find(c => c.id === product.category_id)
     : categories.find(c => c.name === product.category)
   if (!cat) return null
-
   const attrs = categoryAttributes
     .filter(a => a.category_id === cat.id && a.is_active)
     .sort((a, b) => a.sort_order - b.sort_order)
   if (attrs.length === 0) return null
-
   const primary = attrs[0]
   const value = product.attributes[primary.key]
   if (!value) return null
-
   return primary.input_type === "number" ? `${primary.label} ${value}` : value
 }
 
-// Genera el barcode real (Code128) como dataURL PNG, reutilizable tanto en
-// el preview (canvas en pantalla) como en la impresión (img embebida).
-function barcodeToDataURL(code: string): string | null {
-  if (!code) return null
-  const canvas = document.createElement("canvas")
-  try {
-    JsBarcode(canvas, code, BARCODE_OPTIONS)
-    return canvas.toDataURL("image/png")
-  } catch {
-    return null
-  }
-}
-
-// Barcode renderizado en vivo para el preview — misma librería y mismas
-// opciones que la impresión: una única fuente de verdad.
 function BarcodeCanvas({ code, className }: { code: string; className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-
   useEffect(() => {
     if (!canvasRef.current || !code) return
-    try {
-      JsBarcode(canvasRef.current, code, BARCODE_OPTIONS)
-    } catch {
-      // código inválido para Code128 — se deja el canvas vacío
-    }
+    try { JsBarcode(canvasRef.current, code, BARCODE_OPTIONS) } catch { /* código inválido */ }
   }, [code])
-
   if (!code) return <span className="text-xs text-muted-foreground">Sin código</span>
   return <canvas ref={canvasRef} className={className} />
 }
 
-// Vista previa a escala — dos zonas: izquierda (Precio + Grupo) | derecha (Barcode).
-// Layout y proporciones idénticas a lo que se imprime.
-function LabelPreview({ product, scale = 6 }: {
-  product: Product
-  scale?: number
-}) {
-  const code = product.barcode || ""
-  const w = LABEL_W_MM * scale
-  const h = LABEL_H_MM * scale
-  const leftW = 30 * scale       // ~30mm zona izquierda
+function LabelPreview({ product, scale = 6 }: { product: Product; scale?: number }) {
+  const code  = product.barcode ?? ""
+  const w     = LABEL_W_MM * scale
+  const h     = LABEL_H_MM * scale
+  const leftW = 30 * scale
   const price = product.sell_price != null ? product.sell_price : ""
-  const group = product.supplier?.price_group || ""
+  const group = product.supplier?.price_group ?? ""
 
   return (
-    <div
-      style={{
-        width: `${w}px`,
-        height: `${h}px`,
-        display: "flex",
-        alignItems: "stretch",
-        border: "1px solid #e2e8f0",
-        background: "#ffffff",
-        boxSizing: "border-box",
-        fontFamily: "Arial, sans-serif",
-        overflow: "hidden",
-      }}
-    >
-      {/* Zona izquierda: Precio + Grupo centrados */}
+    <div style={{
+      width: `${w}px`, height: `${h}px`, display: "flex", alignItems: "stretch",
+      border: "1px solid #e2e8f0", background: "#ffffff",
+      boxSizing: "border-box", fontFamily: "Arial, sans-serif", overflow: "hidden",
+    }}>
       <div style={{
-        width: `${leftW}px`,
-        flexShrink: 0,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRight: "0.5px solid #ccc",
-        padding: `0 ${2 * scale / 6}px`,
+        width: `${leftW}px`, flexShrink: 0, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        borderRight: "0.5px solid #ccc", padding: `0 ${2 * scale / 6}px`,
       }}>
-        <div style={{ fontSize: `${8 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1 }}>
-          {price}
-        </div>
+        <div style={{ fontSize: `${8 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1 }}>{price}</div>
         {group && (
           <div style={{ fontSize: `${7 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1, marginTop: `${0.8 * scale / 6}px` }}>
             {group}
           </div>
         )}
       </div>
-
-      {/* Zona derecha: Barcode con margen interno (5mm der, 1.5mm arr/abj) */}
       <div style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
         padding: `${1.5 * scale / 6}px ${5 * scale / 6}px ${1.5 * scale / 6}px ${2 * scale / 6}px`,
-        height: "100%",
-        minWidth: 0,
-        overflow: "hidden",
+        height: "100%", minWidth: 0, overflow: "hidden",
       }}>
         <BarcodeCanvas code={code} className="h-full w-auto" />
       </div>
@@ -168,53 +179,124 @@ function LabelPreview({ product, scale = 6 }: {
   )
 }
 
+// ─── Estado de QZ Tray ────────────────────────────────────────────────────────
+type QZStatus = "loading" | "ready" | "connected" | "error"
+
 export default function LabelsPage() {
   const { products, categories, categoryAttributes } = useInventory()
-  const [search, setSearch] = useState("")
+  const [search, setSearch]                     = useState("")
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
-  const [quantities, setQuantities] = useState<Map<string, number>>(new Map())
-  const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
+  const [quantities, setQuantities]             = useState<Map<string, number>>(new Map())
+  const [previewProduct, setPreviewProduct]     = useState<Product | null>(null)
+  const [qzStatus, setQzStatus]                 = useState<QZStatus>("loading")
+  const [qzError, setQzError]                   = useState<string | null>(null)
+  const [printing, setPrinting]                 = useState(false)
 
-  // Only show products that have a barcode (required to print)
-  const filteredProducts = useMemo(() => {
-    return products.filter(product => {
-      const hasBarcode = !!product.barcode
-      const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase()) ||
-        product.sku.toLowerCase().includes(search.toLowerCase()) ||
-        (product.barcode || "").includes(search)
-      return hasBarcode && matchesSearch
-    })
-  }, [products, search])
+  // Carga qz-tray.js una sola vez al montar el componente
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (window.qz) { setQzStatus("ready"); return }
+    if (document.querySelector('script[data-qz]')) return
+
+    const script = document.createElement("script")
+    script.setAttribute("data-qz", "1")
+    script.src = "/qz-tray.js"
+    script.onload = () => setQzStatus("ready")
+    script.onerror = () => {
+      setQzStatus("error")
+      setQzError("No se pudo cargar el cliente QZ Tray (/qz-tray.js)")
+    }
+    document.head.appendChild(script)
+  }, [])
+
+  // Establece (o reutiliza) la conexión WebSocket con QZ Tray
+  const connectQZ = async (): Promise<boolean> => {
+    if (!window.qz) {
+      setQzStatus("error")
+      setQzError("QZ Tray no está disponible. Instalalo desde qz.io y ejecutalo.")
+      return false
+    }
+    if (window.qz.websocket.isActive()) return true
+    try {
+      // Conexión sin firma (válida para HTTP / localhost)
+      window.qz.security.setCertificatePromise((resolve) => resolve(""))
+      window.qz.security.setSignaturePromise(() => (resolve) => resolve(""))
+      await window.qz.websocket.connect()
+      setQzStatus("connected")
+      setQzError(null)
+      return true
+    } catch {
+      setQzStatus("error")
+      setQzError("No se pudo conectar con QZ Tray. ¿Está ejecutándose en esta PC?")
+      return false
+    }
+  }
+
+  // ─── Impresión via TSPL nativo ─────────────────────────────────────────────
+  const handlePrint = async (productsOverride?: Product[]) => {
+    const items = productsOverride
+      ? productsOverride.map(p => ({ product: p, quantity: 1 }))
+      : products
+          .filter(p => selectedProducts.has(p.id) && p.barcode)
+          .map(p => ({ product: p, quantity: quantities.get(p.id) || 1 }))
+
+    if (items.length === 0) return
+
+    setPrinting(true)
+    try {
+      const ok = await connectQZ()
+      if (!ok) return
+
+      // Busca la TSC por nombre parcial — coincide con "TTP-244", "TSC TTP-244 Pro", etc.
+      const found = await window.qz!.printers.find("TTP-244")
+      const printerName = Array.isArray(found) ? found[0] : found
+      if (!printerName) throw new Error("No se encontró la impresora TSC TTP-244 Pro en Windows")
+
+      const config = window.qz!.configs.create(printerName)
+      const tspl   = buildTSPL(items)
+
+      await window.qz!.print(config, [{ type: "raw", format: "plain", data: tspl }])
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setQzStatus("error")
+      setQzError(`Error al imprimir: ${msg}`)
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  // ─── Helpers de selección ──────────────────────────────────────────────────
+  const filteredProducts = useMemo(() => products.filter(product => {
+    const hasBarcode    = !!product.barcode
+    const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase()) ||
+      product.sku.toLowerCase().includes(search.toLowerCase()) ||
+      (product.barcode || "").includes(search)
+    return hasBarcode && matchesSearch
+  }), [products, search])
 
   const toggleProduct = (productId: string) => {
-    const newSelected = new Set(selectedProducts)
-    if (newSelected.has(productId)) {
-      newSelected.delete(productId)
-    } else {
-      newSelected.add(productId)
-      if (!quantities.has(productId)) {
-        setQuantities(new Map(quantities).set(productId, 1))
-      }
+    const next = new Set(selectedProducts)
+    if (next.has(productId)) { next.delete(productId) }
+    else {
+      next.add(productId)
+      if (!quantities.has(productId)) setQuantities(new Map(quantities).set(productId, 1))
     }
-    setSelectedProducts(newSelected)
+    setSelectedProducts(next)
   }
 
   const toggleAll = () => {
-    if (selectedProducts.size === filteredProducts.length) {
-      setSelectedProducts(new Set())
-    } else {
-      setSelectedProducts(new Set(filteredProducts.map(p => p.id)))
-    }
+    setSelectedProducts(
+      selectedProducts.size === filteredProducts.length
+        ? new Set()
+        : new Set(filteredProducts.map(p => p.id))
+    )
   }
 
   const setQuantity = (productId: string, quantity: number) => {
-    const newQuantities = new Map(quantities)
-    if (quantity > 0) {
-      newQuantities.set(productId, quantity)
-    } else {
-      newQuantities.delete(productId)
-    }
-    setQuantities(newQuantities)
+    const next = new Map(quantities)
+    if (quantity > 0) next.set(productId, quantity)
+    else next.delete(productId)
+    setQuantities(next)
   }
 
   const getTotalLabels = () => {
@@ -223,121 +305,31 @@ export default function LabelsPage() {
     return total
   }
 
-  const handlePrint = (productsOverride?: Product[]) => {
-    const list = productsOverride || products.filter(p => selectedProducts.has(p.id) && p.barcode)
-    if (list.length === 0) return
-
-    // Una sola renderización de barcode por código único (evita trabajo repetido si quantity > 1)
-    const barcodeCache = new Map<string, string | null>()
-    const getBarcodeDataURL = (code: string) => {
-      if (!barcodeCache.has(code)) barcodeCache.set(code, barcodeToDataURL(code))
-      return barcodeCache.get(code) || null
-    }
-
-    let labelsHtml = ""
-    list.forEach(product => {
-      const quantity = productsOverride ? 1 : (quantities.get(product.id) || 1)
-      const code = product.barcode || ""
-      const price = product.sell_price != null ? product.sell_price : ""
-      const group = product.supplier?.price_group || ""
-      const barcodeSrc = getBarcodeDataURL(code)
-
-      for (let i = 0; i < quantity; i++) {
-        labelsHtml += `
-          <div class="label">
-            <div class="label-left">
-              <div class="label-price">${price}</div>
-              ${group ? `<div class="label-group">${group}</div>` : ""}
-            </div>
-            <div class="label-barcode">
-              ${barcodeSrc ? `<img src="${barcodeSrc}" alt="${code}" />` : ""}
-            </div>
-          </div>
-        `
-      }
-    })
-
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Etiquetas — Santarelli</title>
-          <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-
-            @page {
-              size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm;
-              margin: 0 0 0 ${PRINT_MARGIN_LEFT_MM}mm;
-            }
-
-            body { font-family: Arial, sans-serif; background: #fff; }
-
-            .label {
-              width: ${LABEL_W_MM - PRINT_MARGIN_LEFT_MM}mm;
-              height: ${LABEL_H_MM}mm;
-              display: flex;
-              align-items: stretch;
-              overflow: hidden;
-              page-break-after: always;
-            }
-            .label:last-child { page-break-after: avoid; }
-
-            .label-left {
-              width: 20mm;
-              flex-shrink: 0;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              border-right: 0.4px solid #ccc;
-              padding: 0 1.5mm;
-            }
-
-            .label-price {
-              font-size: 8.5pt;
-              font-weight: 700;
-              color: #000;
-              line-height: 1;
-            }
-
-            .label-group {
-              font-size: 7.5pt;
-              font-weight: 700;
-              color: #000;
-              line-height: 1;
-              margin-top: 0.8mm;
-            }
-
-            .label-barcode {
-              flex: 1;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              height: 100%;
-              min-width: 0;
-              overflow: hidden;
-              padding: 1.5mm 5mm 1.5mm 2mm;
-            }
-            .label-barcode img {
-              height: 100%;
-              width: auto;
-              object-fit: contain;
-            }
-          </style>
-        </head>
-        <body>
-          ${labelsHtml}
-          <script>window.print();</script>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
+  // ─── Indicador de estado QZ Tray ──────────────────────────────────────────
+  const QZIndicator = () => {
+    if (qzStatus === "loading") return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Cargando QZ Tray…
+      </span>
+    )
+    if (qzStatus === "connected") return (
+      <span className="flex items-center gap-1 text-xs text-green-600">
+        <Wifi className="h-3 w-3" /> QZ Tray conectado
+      </span>
+    )
+    if (qzStatus === "error") return (
+      <span className="flex items-center gap-1 text-xs text-destructive" title={qzError ?? ""}>
+        <WifiOff className="h-3 w-3" /> {qzError ?? "Error QZ Tray"}
+      </span>
+    )
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Wifi className="h-3 w-3" /> QZ Tray listo
+      </span>
+    )
   }
 
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
       <Header title="Etiquetas" />
@@ -348,31 +340,37 @@ export default function LabelsPage() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por nombre, SKU o código de barras..."
+              placeholder="Buscar por nombre, SKU o código de barras…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <QZIndicator />
             {selectedProducts.size > 0 && (
               <Badge variant="secondary">
                 {selectedProducts.size} seleccionados · {getTotalLabels()} etiquetas
               </Badge>
             )}
-            <Button onClick={() => handlePrint()} disabled={selectedProducts.size === 0}>
-              <Printer className="mr-2 h-4 w-4" />
-              Imprimir
+            <Button
+              onClick={() => handlePrint()}
+              disabled={selectedProducts.size === 0 || printing}
+            >
+              {printing
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <Printer className="mr-2 h-4 w-4" />}
+              {printing ? "Imprimiendo…" : "Imprimir"}
             </Button>
           </div>
         </div>
 
-        {/* Label size info */}
+        {/* Info */}
         <p className="mb-3 text-xs text-muted-foreground">
-          Formato: {LABEL_W_MM}×{LABEL_H_MM} mm — solo se listan productos con código de barras asignado
+          Formato: {LABEL_W_MM}×{LABEL_H_MM} mm · Impresión via TSPL (QZ Tray + TSC TTP-244 Pro) · Solo productos con código de barras
         </p>
 
-        {/* Products table */}
+        {/* Tabla */}
         <div className="rounded-lg border border-border bg-card">
           <Table>
             <TableHeader>
@@ -426,28 +424,17 @@ export default function LabelsPage() {
                   <TableCell>
                     {selectedProducts.has(product.id) ? (
                       <div className="flex items-center justify-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => setQuantity(product.id, Math.max(1, (quantities.get(product.id) || 1) - 1))}
-                        >
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0"
+                          onClick={() => setQuantity(product.id, Math.max(1, (quantities.get(product.id) || 1) - 1))}>
                           −
                         </Button>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="99"
+                        <Input type="number" min="1" max="99"
                           value={quantities.get(product.id) || 1}
                           onChange={(e) => setQuantity(product.id, Math.max(1, parseInt(e.target.value) || 1))}
                           className="h-8 w-12 text-center p-0"
                         />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => setQuantity(product.id, Math.min(99, (quantities.get(product.id) || 1) + 1))}
-                        >
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0"
+                          onClick={() => setQuantity(product.id, Math.min(99, (quantities.get(product.id) || 1) + 1))}>
                           +
                         </Button>
                       </div>
@@ -480,33 +467,27 @@ export default function LabelsPage() {
         )}
       </main>
 
-      {/* Label Preview Dialog */}
+      {/* Preview dialog */}
       <Dialog open={!!previewProduct} onOpenChange={() => setPreviewProduct(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Vista previa — {LABEL_W_MM}×{LABEL_H_MM} mm</DialogTitle>
           </DialogHeader>
-
           <div className="flex flex-col items-center gap-4 py-4">
-            {previewProduct && (
-              <LabelPreview
-                product={previewProduct}
-                scale={6}
-              />
-            )}
+            {previewProduct && <LabelPreview product={previewProduct} scale={6} />}
             <p className="text-xs text-muted-foreground text-center">
-              Vista a escala con barcode real (Code128) — el impreso usará exactamente este contenido
+              Vista aproximada — la impresión real usa TSPL nativo (posición exacta en dots)
             </p>
           </div>
-
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPreviewProduct(null)}>
-              Cerrar
-            </Button>
-            <Button onClick={() => {
-              if (previewProduct) handlePrint([previewProduct])
-            }}>
-              <Printer className="mr-2 h-4 w-4" />
+            <Button variant="outline" onClick={() => setPreviewProduct(null)}>Cerrar</Button>
+            <Button
+              disabled={printing}
+              onClick={() => { if (previewProduct) handlePrint([previewProduct]) }}
+            >
+              {printing
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <Printer className="mr-2 h-4 w-4" />}
               Imprimir 1
             </Button>
           </div>
