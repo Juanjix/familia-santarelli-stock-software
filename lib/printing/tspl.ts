@@ -21,8 +21,7 @@ export function buildLabelBatch(
     `DIRECTION 0`,
     `REFERENCE 0, 0`,
     `OFFSET 0 mm`,
-    `SET TEAR ON`,
-    `SET BACKFEED ON`,
+    `SET TEAR OFF`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
