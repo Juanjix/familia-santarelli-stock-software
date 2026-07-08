@@ -31,7 +31,7 @@ const LABEL_W_MM = 80
 const LABEL_H_MM = 8.5
 // Offset izquierdo calibrado físicamente: el driver TSC coloca el origen (0,0)
 // 20mm antes del inicio del área adhesiva útil. Este margen compensa ese desfase.
-const PRINT_MARGIN_LEFT_MM = 20
+const PRINT_MARGIN_LEFT_MM = 30
 
 const BARCODE_OPTIONS = {
   format: "CODE128",
@@ -287,7 +287,7 @@ export default function LabelsPage() {
             .label:last-child { page-break-after: avoid; }
 
             .label-left {
-              width: 30mm;
+              width: 20mm;
               flex-shrink: 0;
               display: flex;
               flex-direction: column;
