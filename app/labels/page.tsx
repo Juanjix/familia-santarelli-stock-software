@@ -24,30 +24,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Search, Printer, Tags, Barcode, Wifi, WifiOff, Loader2 } from "lucide-react"
+import { printLabels, isQZConnected, PrintError, type LabelItem } from "@/lib/printing"
 
-// ─── Dimensiones físicas ───────────────────────────────────────────────────────
+// ─── Dimensiones físicas (solo para el preview en pantalla) ─────────────────
 const LABEL_W_MM = 80
 const LABEL_H_MM = 10
 
-// ─── TSPL — coordenadas en dots (203 DPI ≈ 8 dots/mm) ────────────────────────
-// Todos los valores son ajustables. No tocar el layout HTML para cambiar
-// la posición de impresión: solo modificar estas constantes.
-const TSPL = {
-  labelW:    80,   // mm — ancho físico de la etiqueta
-  labelH:    10,   // mm — alto físico de la etiqueta
-  gap:        3,   // mm — gap entre etiquetas en el rollo
-  priceX:    10,   // dots — x del precio (~1.25mm desde borde izquierdo)
-  priceY:     8,   // dots — y del precio (~1mm desde borde superior)
-  groupY:    36,   // dots — y del grupo (~4.5mm desde borde superior)
-  font:      "2",  // fuente TSC interna: "2" = 12×20 dots = 1.5×2.5mm
-  barcodeX: 200,   // dots — x del barcode (~25mm desde borde izquierdo)
-  barcodeY:   3,   // dots — y del barcode (~0.4mm desde borde superior)
-  barcodeH:  45,   // dots — altura de las barras (~5.6mm)
-  barcodeN:   2,   // dots — módulo mínimo (narrow bar width)
-} as const
-
-// ─── BARCODE_OPTIONS — solo para el preview en pantalla ───────────────────────
-// La impresión real usa TSPL nativo. Estas opciones NO afectan lo que imprime.
+// ─── BARCODE_OPTIONS — solo para el preview en pantalla ──────────────────────
 const BARCODE_OPTIONS = {
   format: "CODE128",
   width: 2,
@@ -60,58 +43,7 @@ const BARCODE_OPTIONS = {
   lineColor: "#000000",
 } as const
 
-// ─── Tipo global para QZ Tray ─────────────────────────────────────────────────
-declare global {
-  interface Window {
-    qz?: {
-      websocket: {
-        connect: (options?: object) => Promise<void>
-        disconnect: () => Promise<void>
-        isActive: () => boolean
-      }
-      printers: {
-        find: (query?: string) => Promise<string | string[]>
-      }
-      configs: {
-        create: (printer: string, options?: object) => object
-      }
-      print: (config: object, data: object[]) => Promise<void>
-      security: {
-        setCertificatePromise: (fn: (resolve: (v: string) => void) => void) => void
-        setSignaturePromise: (fn: (toSign: string) => (resolve: (v: string) => void) => void) => void
-      }
-    }
-  }
-}
-
-// ─── Generador de TSPL ────────────────────────────────────────────────────────
-// Produce el string de comandos nativos para un lote de etiquetas.
-function buildTSPL(items: Array<{ product: Product; quantity: number }>): string {
-  const cmds: string[] = [
-    `SIZE ${TSPL.labelW} mm, ${TSPL.labelH} mm`,
-    `GAP ${TSPL.gap} mm, 0 mm`,
-    `DIRECTION 0`,
-    `REFERENCE 0, 0`,
-    `OFFSET 0 mm`,
-    `SET TEAR ON`,
-  ]
-
-  for (const { product, quantity } of items) {
-    const code  = product.barcode ?? ""
-    const price = product.sell_price != null ? String(product.sell_price) : ""
-    const group = product.supplier?.price_group ?? ""
-
-    cmds.push("CLS")
-    if (price) cmds.push(`TEXT ${TSPL.priceX}, ${TSPL.priceY}, "${TSPL.font}", 0, 1, 1, "${price}"`)
-    if (group) cmds.push(`TEXT ${TSPL.priceX}, ${TSPL.groupY}, "${TSPL.font}", 0, 1, 1, "${group}"`)
-    if (code)  cmds.push(`BARCODE ${TSPL.barcodeX}, ${TSPL.barcodeY}, "128", ${TSPL.barcodeH}, 1, 0, ${TSPL.barcodeN}, ${TSPL.barcodeN}, "${code}"`)
-    cmds.push(`PRINT ${quantity}, 1`)
-  }
-
-  return cmds.join("\r\n") + "\r\n"
-}
-
-// ─── Helpers existentes (preview) ────────────────────────────────────────────
+// ─── Helpers de preview ───────────────────────────────────────────────────────
 function getPrimaryAttributeText(
   product: Product,
   categories: Category[],
@@ -179,8 +111,18 @@ function LabelPreview({ product, scale = 6 }: { product: Product; scale?: number
   )
 }
 
+// ─── Helpers para construir LabelItem desde Product ──────────────────────────
+function productToLabelItem(product: Product, quantity: number): LabelItem {
+  return {
+    barcode:  product.barcode ?? "",
+    price:    product.sell_price != null ? String(product.sell_price) : undefined,
+    group:    product.supplier?.price_group ?? undefined,
+    quantity,
+  }
+}
+
 // ─── Estado de QZ Tray ────────────────────────────────────────────────────────
-type QZStatus = "loading" | "ready" | "connected" | "error"
+type QZStatus = "idle" | "connected" | "error"
 
 export default function LabelsPage() {
   const { products, categories, categoryAttributes } = useInventory()
@@ -188,78 +130,34 @@ export default function LabelsPage() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [quantities, setQuantities]             = useState<Map<string, number>>(new Map())
   const [previewProduct, setPreviewProduct]     = useState<Product | null>(null)
-  const [qzStatus, setQzStatus]                 = useState<QZStatus>("loading")
+  const [qzStatus, setQzStatus]                 = useState<QZStatus>("idle")
   const [qzError, setQzError]                   = useState<string | null>(null)
   const [printing, setPrinting]                 = useState(false)
 
-  // Carga qz-tray.js una sola vez al montar el componente
+  // Refleja el estado de conexión real de QZ en el indicador
   useEffect(() => {
-    if (typeof window === "undefined") return
-    if (window.qz) { setQzStatus("ready"); return }
-    if (document.querySelector('script[data-qz]')) return
+    if (isQZConnected()) setQzStatus("connected")
+  }, [printing])
 
-    const script = document.createElement("script")
-    script.setAttribute("data-qz", "1")
-    script.src = "/qz-tray.js"
-    script.onload = () => setQzStatus("ready")
-    script.onerror = () => {
-      setQzStatus("error")
-      setQzError("No se pudo cargar el cliente QZ Tray (/qz-tray.js)")
-    }
-    document.head.appendChild(script)
-  }, [])
-
-  // Establece (o reutiliza) la conexión WebSocket con QZ Tray
-  const connectQZ = async (): Promise<boolean> => {
-    if (!window.qz) {
-      setQzStatus("error")
-      setQzError("QZ Tray no está disponible. Instalalo desde qz.io y ejecutalo.")
-      return false
-    }
-    if (window.qz.websocket.isActive()) return true
-    try {
-      // Conexión sin firma (válida para HTTP / localhost)
-      window.qz.security.setCertificatePromise((resolve) => resolve(""))
-      window.qz.security.setSignaturePromise(() => (resolve) => resolve(""))
-      await window.qz.websocket.connect()
-      setQzStatus("connected")
-      setQzError(null)
-      return true
-    } catch {
-      setQzStatus("error")
-      setQzError("No se pudo conectar con QZ Tray. ¿Está ejecutándose en esta PC?")
-      return false
-    }
-  }
-
-  // ─── Impresión via TSPL nativo ─────────────────────────────────────────────
+  // ─── Impresión ─────────────────────────────────────────────────────────────
   const handlePrint = async (productsOverride?: Product[]) => {
     const items = productsOverride
-      ? productsOverride.map(p => ({ product: p, quantity: 1 }))
+      ? productsOverride.map(p => productToLabelItem(p, 1))
       : products
           .filter(p => selectedProducts.has(p.id) && p.barcode)
-          .map(p => ({ product: p, quantity: quantities.get(p.id) || 1 }))
+          .map(p => productToLabelItem(p, quantities.get(p.id) || 1))
 
     if (items.length === 0) return
 
     setPrinting(true)
+    setQzError(null)
     try {
-      const ok = await connectQZ()
-      if (!ok) return
-
-      // Busca la TSC por nombre parcial — coincide con "TTP-244", "TSC TTP-244 Pro", etc.
-      const found = await window.qz!.printers.find("TTP-244")
-      const printerName = Array.isArray(found) ? found[0] : found
-      if (!printerName) throw new Error("No se encontró la impresora TSC TTP-244 Pro en Windows")
-
-      const config = window.qz!.configs.create(printerName)
-      const tspl   = buildTSPL(items)
-
-      await window.qz!.print(config, [{ type: "raw", format: "plain", data: tspl }])
+      await printLabels(items)
+      setQzStatus("connected")
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
+      const msg = e instanceof PrintError ? e.message : (e instanceof Error ? e.message : String(e))
       setQzStatus("error")
-      setQzError(`Error al imprimir: ${msg}`)
+      setQzError(msg)
     } finally {
       setPrinting(false)
     }
@@ -307,11 +205,6 @@ export default function LabelsPage() {
 
   // ─── Indicador de estado QZ Tray ──────────────────────────────────────────
   const QZIndicator = () => {
-    if (qzStatus === "loading") return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Loader2 className="h-3 w-3 animate-spin" /> Cargando QZ Tray…
-      </span>
-    )
     if (qzStatus === "connected") return (
       <span className="flex items-center gap-1 text-xs text-green-600">
         <Wifi className="h-3 w-3" /> QZ Tray conectado
