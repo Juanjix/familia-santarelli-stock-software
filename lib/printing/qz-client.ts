@@ -78,8 +78,8 @@ export async function getQZConnection(): Promise<QZModule> {
 
     const secure = window.location.protocol === "https:"
     await qz.websocket.connect({
-      host: "localhost",
-      port: { secure: 8183, insecure: 8182 },
+      host: ["localhost"],
+      port: { secure: [8183], insecure: [8182] },
       usingSecure: secure,
     })
   }
