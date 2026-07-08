@@ -76,11 +76,11 @@ export async function getQZConnection(): Promise<QZModule> {
       () => (resolve: (v: string) => void) => resolve("")
     )
 
-    const secure = window.location.protocol === "https:"
+    // Chrome trata localhost como origen seguro — ws:// funciona incluso desde HTTPS
     await qz.websocket.connect({
       host: ["localhost"],
-      port: { secure: [8183], insecure: [8182] },
-      usingSecure: secure,
+      port: { insecure: [8182] },
+      usingSecure: false,
     })
   }
 
