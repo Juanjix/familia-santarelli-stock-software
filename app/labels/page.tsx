@@ -33,7 +33,7 @@ const LABEL_H_MM = 8.5
 const BARCODE_OPTIONS = {
   format: "CODE128",
   width: 2,
-  height: 30,
+  height: 45,
   displayValue: true,
   fontSize: 7,
   textMargin: 1,
