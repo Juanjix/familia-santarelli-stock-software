@@ -60,6 +60,8 @@ export default function UsersPage() {
     if (res.ok) {
       const data = await res.json()
       setUsers(data ?? [])
+    } else {
+      toast.error("No se pudieron cargar los usuarios. Revisá tu conexión e intentá de nuevo.")
     }
     setLoading(false)
   }, [])
@@ -110,7 +112,7 @@ export default function UsersPage() {
       setDialog(null)
       await loadUsers()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al crear usuario")
+      toast.error(e instanceof Error ? e.message : "No se pudo crear el usuario. Verificá los datos e intentá nuevamente.")
     } finally {
       setSaving(false)
     }
@@ -131,7 +133,7 @@ export default function UsersPage() {
       setDialog(null)
       await loadUsers()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al actualizar usuario")
+      toast.error(e instanceof Error ? e.message : "No se pudo actualizar el usuario. Intentá nuevamente.")
     } finally {
       setSaving(false)
     }

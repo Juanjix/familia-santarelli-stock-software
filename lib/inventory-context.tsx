@@ -104,7 +104,7 @@ interface InventoryContextType {
     customerPhone: string
     expiresAt?: string | null
     notes?: string | null
-  }) => Promise<{ success: boolean; error?: string }>
+  }) => Promise<{ success: boolean; error?: string; coupon?: Coupon }>
   useCoupon: (id: string) => Promise<void>
   // ── Sobres ────────────────────────────────────────────────
   customers: Customer[]
@@ -513,7 +513,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     customerPhone: string
     expiresAt?: string | null
     notes?: string | null
-  }): Promise<{ success: boolean; error?: string }> => {
+  }): Promise<{ success: boolean; error?: string; coupon?: Coupon }> => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     let code = "CUP-"
     for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length))
@@ -541,9 +541,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .eq("id", (data as Coupon).id)
       .single()
 
-    setCoupons(prev => [normalizeCoupon(full || data), ...prev])
+    const newCoupon = normalizeCoupon(full || data)
+    setCoupons(prev => [newCoupon, ...prev])
     await refreshData()
-    return { success: true }
+    return { success: true, coupon: newCoupon }
   }, [supabase, refreshData])
 
   const useCoupon = useCallback(async (id: string) => {

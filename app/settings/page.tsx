@@ -55,6 +55,7 @@ import {
   Type,
 } from "lucide-react"
 import type { Brand, Category, CategoryAttribute, Supplier, Jeweler, WorkerType, Employee } from "@/lib/types"
+import { toast } from "sonner"
 
 function slugify(text: string): string {
   return text
@@ -87,16 +88,24 @@ export default function SettingsPage() {
   const [warehouseName, setWarehouseName] = useState("")
   const [warehouseDescription, setWarehouseDescription] = useState("")
   const [warehouseActive, setWarehouseActive] = useState(true)
+  const [savingWarehouse, setSavingWarehouse] = useState(false)
 
-  const handleSaveWarehouse = () => {
+  const handleSaveWarehouse = async () => {
     if (!warehouseName) return
-    if (editingWarehouse) {
-      updateWarehouse(editingWarehouse.id, { name: warehouseName, description: warehouseDescription, isActive: warehouseActive })
-    } else {
-      addWarehouse({ name: warehouseName, description: warehouseDescription, isActive: warehouseActive, stockCount: 0, totalValue: 0 })
+    setSavingWarehouse(true)
+    try {
+      if (editingWarehouse) {
+        await updateWarehouse(editingWarehouse.id, { name: warehouseName, description: warehouseDescription, isActive: warehouseActive })
+      } else {
+        await addWarehouse({ name: warehouseName, description: warehouseDescription, isActive: warehouseActive, stockCount: 0, totalValue: 0 })
+      }
+      resetWarehouseForm()
+      setWarehouseDialogOpen(false)
+    } catch {
+      toast.error("No se pudo guardar el depósito. Verificá tu conexión e intentá nuevamente.")
+    } finally {
+      setSavingWarehouse(false)
     }
-    resetWarehouseForm()
-    setWarehouseDialogOpen(false)
   }
 
   const resetWarehouseForm = () => {
@@ -591,7 +600,7 @@ export default function SettingsPage() {
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => { setWarehouseDialogOpen(false); resetWarehouseForm() }}>Cancelar</Button>
-                    <Button onClick={handleSaveWarehouse} disabled={!warehouseName}>
+                    <Button onClick={handleSaveWarehouse} disabled={!warehouseName || savingWarehouse}>
                       {editingWarehouse ? "Guardar Cambios" : "Crear Depósito"}
                     </Button>
                   </DialogFooter>

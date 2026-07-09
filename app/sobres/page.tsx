@@ -18,6 +18,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -986,6 +996,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
   const [actionNote, setActionNote] = useState("")
   const [actionSaving, setActionSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
   const [actionOperator, setActionOperator] = useState<string>(() => {
     if (typeof window !== "undefined") return localStorage.getItem("sobres_operator") || ""
     return ""
@@ -1133,6 +1144,8 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
       setActiveAction(null)
       resetActionForm()
       fetchEnvelopeEvents(envelope.id).then(setEvents)
+    } catch {
+      setActionError("No se pudo completar la acción. Revisá tu conexión e intentá nuevamente.")
     } finally {
       setActionSaving(false)
     }
@@ -1239,7 +1252,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
             !actionOperator ||
             (activeAction === "transfer" && !actionWarehouseId) ||
             (activeAction === "deliver" && !actionDeliveredBy.trim())}
-          onClick={handleAction}>
+          onClick={activeAction === "cancel_envelope" ? () => setCancelConfirmOpen(true) : handleAction}>
           {actionSaving ? "Guardando..." : "Confirmar"}
         </Button>
       </div>
@@ -1706,6 +1719,26 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
           <Button variant="outline" onClick={onClose}>Cerrar</Button>
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar este sobre?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción es irreversible. El sobre pasará al estado <strong>Cancelado</strong> y no podrá reactivarse.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setCancelConfirmOpen(false); handleAction() }}
+            >
+              Sí, cancelar sobre
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

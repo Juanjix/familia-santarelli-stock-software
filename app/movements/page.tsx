@@ -111,7 +111,9 @@ export default function MovementsPage() {
         <div className="space-y-3 md:hidden">
           {filteredMovements.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              No se encontraron movimientos
+              <ArrowLeftRight className="h-8 w-8 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">{search || typeFilter !== "all" ? "Sin resultados para ese filtro" : "Todavía no hay movimientos registrados"}</p>
+              {(search || typeFilter !== "all") && <p className="text-sm mt-1">Probá cambiando el filtro o la búsqueda.</p>}
             </div>
           ) : (
             filteredMovements.map((movement) => (
@@ -180,8 +182,10 @@ export default function MovementsPage() {
             <TableBody>
               {filteredMovements.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    No se encontraron movimientos
+                  <TableCell colSpan={8} className="py-16 text-center text-muted-foreground">
+                    <ArrowLeftRight className="h-8 w-8 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">{search || typeFilter !== "all" ? "Sin resultados para ese filtro" : "Todavía no hay movimientos registrados"}</p>
+                    {(search || typeFilter !== "all") && <p className="text-sm mt-1">Probá cambiando el filtro o la búsqueda.</p>}
                   </TableCell>
                 </TableRow>
               ) : (

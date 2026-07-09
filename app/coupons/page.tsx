@@ -33,6 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Search, Plus, Ticket, CheckCircle2, Printer } from "lucide-react"
+import { toast } from "sonner"
 
 const PHONE_REGEX = /^[0-9+\-\s()]{6,20}$/
 
@@ -121,7 +122,10 @@ function printTicket(coupon: Coupon, product: Product | undefined) {
     </body></html>`
 
   const win = window.open("", "_blank")
-  if (!win) return
+  if (!win) {
+    toast.error("No se pudo abrir la ventana de impresión. Deshabilitá el bloqueador de popups e intentá nuevamente.")
+    return
+  }
   win.document.write(html)
   win.document.close()
 }
@@ -222,12 +226,10 @@ export default function CouponsPage() {
         return
       }
 
-      const newest = coupons[0]
       setCreateDialogOpen(false)
-      resetForm()
-      // Imprimir automáticamente el ticket recién emitido
       const product = products.find(p => p.id === selectedProductId)
-      if (newest) printTicket(newest, product)
+      resetForm()
+      if (result.coupon) printTicket(result.coupon, product)
     } finally {
       setSubmitting(false)
     }
@@ -453,8 +455,13 @@ export default function CouponsPage() {
             <TableBody>
               {filteredCoupons.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    No hay tickets para mostrar
+                  <TableCell colSpan={8} className="py-16 text-center text-muted-foreground">
+                    <Ticket className="h-8 w-8 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">{search || statusFilter !== "all" ? "Sin resultados para ese filtro" : "Todavía no hay tickets emitidos"}</p>
+                    {search || statusFilter !== "all"
+                      ? <p className="text-sm mt-1">Probá cambiando el filtro o la búsqueda.</p>
+                      : <p className="text-sm mt-1">Usá el botón <strong>Nuevo ticket</strong> para emitir el primero.</p>
+                    }
                   </TableCell>
                 </TableRow>
               ) : (

@@ -189,7 +189,7 @@ function NewTransferPanel({
       lines.map(l => ({ productId: l.productId, quantity: l.quantity }))
     )
     setSaving(false)
-    if (!result.success) { setError(result.error || "Error al crear la transferencia"); return }
+    if (!result.success) { setError(result.error || "No se pudo crear la transferencia. Revisá tu conexión e intentá nuevamente."); return }
     onCreated()
   }
 
@@ -336,7 +336,7 @@ function ConfirmReceiptDialog({
       hasDifferences ? incidentNotes : undefined
     )
     setSaving(false)
-    if (!result.success) { setError(result.error || "Error al confirmar"); return }
+    if (!result.success) { setError(result.error || "No se pudo confirmar la recepción. Revisá tu conexión e intentá nuevamente."); return }
     onConfirmed()
   }
 
