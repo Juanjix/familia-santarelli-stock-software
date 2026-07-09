@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/lib/auth-context"
 import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, WorkerType, Employee, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, EnvelopeEvent, QuoteStatus, StockTransfer, StockTransferItem, StockTransferEvent } from "./types"
 
 // Helper to normalize product for UI
@@ -146,6 +147,9 @@ interface InventoryContextType {
 const InventoryContext = createContext<InventoryContextType | null>(null)
 
 export function InventoryProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  const currentUserName = user?.display_name ?? "Sistema"
+
   const [products, setProducts] = useState<Product[]>([])
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
@@ -369,7 +373,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       p_quantity: quantity,
       p_type: dbType,
       p_reason: notes || null,
-      p_user_name: "Usuario",
+      p_user_name: currentUserName,
       p_to_warehouse_id: null,
     })
     
@@ -394,7 +398,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       p_quantity: quantity,
       p_type: "transfer",
       p_reason: notes || null,
-      p_user_name: "Usuario",
+      p_user_name: currentUserName,
       p_to_warehouse_id: toWarehouseId,
     })
 
@@ -525,7 +529,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       p_customer_phone: input.customerPhone,
       p_expires_at: input.expiresAt || null,
       p_notes: input.notes || null,
-      p_user_name: "Usuario",
+      p_user_name: currentUserName,
     })
 
     if (error) {
