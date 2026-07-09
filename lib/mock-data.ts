@@ -1,11 +1,11 @@
 import type { Product, Warehouse, Movement, StockByWarehouse } from "./types"
 
 export const warehouses: Warehouse[] = [
-  { id: "1", name: "Shopping", description: "Local principal en el centro comercial", isActive: true, stockCount: 4250, totalValue: 1250000 },
-  { id: "2", name: "Galería", description: "Sucursal en galería comercial", isActive: true, stockCount: 3180, totalValue: 890000 },
-  { id: "3", name: "Depósito físico", description: "Almacén principal de reserva", isActive: true, stockCount: 5420, totalValue: 2100000 },
-  { id: "4", name: "Caja fuerte", description: "Almacenamiento de alta seguridad", isActive: true, stockCount: 1850, totalValue: 3500000 },
-  { id: "5", name: "Taller", description: "Taller de reparaciones y ajustes", isActive: true, stockCount: 320, totalValue: 45000 },
+  { id: "1", name: "Shopping", description: "Local principal en el centro comercial", is_active: true, stock_count: 4250, total_value: 1250000, isActive: true, stockCount: 4250, totalValue: 1250000 },
+  { id: "2", name: "Galería", description: "Sucursal en galería comercial", is_active: true, stock_count: 3180, total_value: 890000, isActive: true, stockCount: 3180, totalValue: 890000 },
+  { id: "3", name: "Depósito físico", description: "Almacén principal de reserva", is_active: true, stock_count: 5420, total_value: 2100000, isActive: true, stockCount: 5420, totalValue: 2100000 },
+  { id: "4", name: "Caja fuerte", description: "Almacenamiento de alta seguridad", is_active: true, stock_count: 1850, total_value: 3500000, isActive: true, stockCount: 1850, totalValue: 3500000 },
+  { id: "5", name: "Taller", description: "Taller de reparaciones y ajustes", is_active: true, stock_count: 320, total_value: 45000, isActive: true, stockCount: 320, totalValue: 45000 },
 ]
 
 const categories = ["Anillos", "Collares", "Pulseras", "Aros", "Cadenas", "Relojes", "Accesorios"]
@@ -45,6 +45,7 @@ function generateProducts(count: number): Product[] {
     const stockStatus = stockStatuses[Math.floor(Math.random() * 10) < 7 ? 0 : Math.floor(Math.random() * 10) < 9 ? 1 : 2]
     const totalStock = stockStatus === "out_of_stock" ? 0 : stockStatus === "low_stock" ? Math.floor(Math.random() * 5) + 1 : Math.floor(Math.random() * 50) + 5
     
+    const price = Math.floor(Math.random() * 50000) + 500
     products.push({
       id: String(i),
       name: `${baseName} ${material} #${variant}`,
@@ -53,13 +54,21 @@ function generateProducts(count: number): Product[] {
       material,
       weight: parseFloat((Math.random() * 50 + 1).toFixed(2)),
       barcode: generateBarcode(),
-      pricingType: pricingTypes[Math.floor(Math.random() * pricingTypes.length)],
+      description: null,
+      supplier_id: null,
+      cost_price: Math.floor(price * 0.6),
+      sell_price: price,
+      min_stock: 2,
       stockStatus,
+      is_active: Math.random() > 0.1,
+      total_stock: totalStock,
+      price,
+      // camelCase aliases used by legacy UI pages
       isActive: Math.random() > 0.1,
       totalStock,
-      price: Math.floor(Math.random() * 50000) + 500,
-      createdAt: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      pricingType: pricingTypes[Math.floor(Math.random() * pricingTypes.length)],
+      created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
     })
   }
   
@@ -76,8 +85,8 @@ export function getStockByWarehouse(productId: string): StockByWarehouse[] {
   const product = getProductById(productId)
   if (!product) return []
   
-  const totalStock = product.totalStock
-  const activeWarehouses = warehouses.filter(w => w.isActive)
+  const totalStock = product.total_stock
+  const activeWarehouses = warehouses.filter(w => w.is_active)
   const distribution: StockByWarehouse[] = []
   let remaining = totalStock
   
@@ -102,14 +111,23 @@ export function getStockByWarehouse(productId: string): StockByWarehouse[] {
   return distribution.filter(d => d.quantity > 0)
 }
 
+const mkMovement = (o: { id: string; productId: string; productName: string; type: Movement["type"]; quantity: number; fromWarehouse?: string; toWarehouse?: string; date: string; user: string; notes?: string }): Movement => ({
+  id: o.id, type: o.type, quantity: o.quantity,
+  product_id: o.productId, warehouse_id: null, to_warehouse_id: null,
+  reason: o.notes ?? null, user_name: o.user, created_at: o.date,
+  productId: o.productId, productName: o.productName,
+  fromWarehouse: o.fromWarehouse, toWarehouse: o.toWarehouse,
+  date: o.date, user: o.user, notes: o.notes,
+})
+
 export const recentMovements: Movement[] = [
-  { id: "1", productId: "1", productName: "Alianza Clásica Oro #42", type: "entry", quantity: 10, toWarehouse: "Shopping", date: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), user: "María García" },
-  { id: "2", productId: "15", productName: "Collar Princesa Plata #18", type: "exit", quantity: 1, fromWarehouse: "Galería", date: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), user: "Carlos Ruiz", notes: "Venta directa" },
-  { id: "3", productId: "8", productName: "Pulsera Tennis Oro #55", type: "transfer", quantity: 5, fromWarehouse: "Depósito físico", toWarehouse: "Shopping", date: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(), user: "Ana López" },
-  { id: "4", productId: "22", productName: "Aros Criollos Oro #12", type: "adjustment", quantity: -2, fromWarehouse: "Caja fuerte", date: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), user: "Pedro Martínez", notes: "Ajuste de inventario" },
-  { id: "5", productId: "31", productName: "Cadena Rolo Plata #88", type: "entry", quantity: 25, toWarehouse: "Depósito físico", date: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), user: "María García" },
-  { id: "6", productId: "45", productName: "Reloj Clásico Acero #33", type: "exit", quantity: 1, fromWarehouse: "Shopping", date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), user: "Carlos Ruiz", notes: "Venta online" },
-  { id: "7", productId: "52", productName: "Gemelos Ejecutivos Acero #7", type: "transfer", quantity: 3, fromWarehouse: "Galería", toWarehouse: "Taller", date: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(), user: "Ana López", notes: "Para grabado" },
+  mkMovement({ id: "1", productId: "1", productName: "Alianza Clásica Oro #42", type: "entry", quantity: 10, toWarehouse: "Shopping", date: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), user: "María García" }),
+  mkMovement({ id: "2", productId: "15", productName: "Collar Princesa Plata #18", type: "exit", quantity: 1, fromWarehouse: "Galería", date: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), user: "Carlos Ruiz", notes: "Venta directa" }),
+  mkMovement({ id: "3", productId: "8", productName: "Pulsera Tennis Oro #55", type: "transfer", quantity: 5, fromWarehouse: "Depósito físico", toWarehouse: "Shopping", date: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(), user: "Ana López" }),
+  mkMovement({ id: "4", productId: "22", productName: "Aros Criollos Oro #12", type: "adjustment", quantity: -2, fromWarehouse: "Caja fuerte", date: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), user: "Pedro Martínez", notes: "Ajuste de inventario" }),
+  mkMovement({ id: "5", productId: "31", productName: "Cadena Rolo Plata #88", type: "entry", quantity: 25, toWarehouse: "Depósito físico", date: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), user: "María García" }),
+  mkMovement({ id: "6", productId: "45", productName: "Reloj Clásico Acero #33", type: "exit", quantity: 1, fromWarehouse: "Shopping", date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), user: "Carlos Ruiz", notes: "Venta online" }),
+  mkMovement({ id: "7", productId: "52", productName: "Gemelos Ejecutivos Acero #7", type: "transfer", quantity: 3, fromWarehouse: "Galería", toWarehouse: "Taller", date: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(), user: "Ana López", notes: "Para grabado" }),
 ]
 
 export const dashboardStats = {
@@ -128,8 +146,8 @@ export const dashboardStats = {
   ],
   stockByWarehouse: warehouses.map(w => ({
     warehouse: w.name,
-    count: w.stockCount,
-    value: w.totalValue,
-    percentage: ((w.stockCount / 15020) * 100).toFixed(1),
+    count: w.stock_count,
+    value: w.total_value,
+    percentage: ((w.stock_count / 15020) * 100).toFixed(1),
   })),
 }

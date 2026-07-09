@@ -952,7 +952,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
 interface EnvelopeDetailDialogProps {
   envelope: Envelope | null
   onClose: () => void
-  onUpdated: (id: string, updates: Partial<Envelope>, statusNote?: string, createdBy?: string) => Promise<void>
+  onUpdated: (id: string, updates: Partial<Envelope>, statusNote?: string) => Promise<void>
   onLocalUpdate: (id: string, updates: Partial<Envelope>) => void
   onPrint: (envelope: Envelope) => void
 }
@@ -1058,16 +1058,16 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
     try {
       switch (activeAction) {
         case "request_quote":
-          await onUpdated(envelope.id, { status: "quote_pending", quote_status: "pending" }, undefined, op)
+          await onUpdated(envelope.id, { status: "quote_pending", quote_status: "pending" })
           break
         case "send_to_jeweler":
-          await onUpdated(envelope.id, { status: "in_workshop", jeweler_id: actionJewelerId || null }, undefined, op)
+          await onUpdated(envelope.id, { status: "in_workshop", jeweler_id: actionJewelerId || null })
           break
         case "receive_from_jeweler":
-          await onUpdated(envelope.id, { status: "ready" }, undefined, op)
+          await onUpdated(envelope.id, { status: "ready" })
           break
         case "transfer": {
-          const result = await sendTransfer(envelope.id, envelope.current_warehouse_id, actionWarehouseId, op)
+          const result = await sendTransfer(envelope.id, envelope.current_warehouse_id, actionWarehouseId)
           if (!result.success) { setActionError(result.error || "No se pudo enviar el sobre."); return }
           const destWarehouse = warehouses.find(w => w.id === actionWarehouseId)
           onLocalUpdate(envelope.id, {
@@ -1079,7 +1079,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
           break
         }
         case "confirm_receipt": {
-          const result = await confirmTransferReceipt(envelope.id, op)
+          const result = await confirmTransferReceipt(envelope.id)
           if (!result.success) { setActionError(result.error || "No se pudo confirmar la recepción."); return }
           const arrivedWarehouse = envelope.pending_transfer_warehouse
           onLocalUpdate(envelope.id, {
@@ -1098,21 +1098,20 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
             quote_amount: actionQuoteAmount ? parseFloat(actionQuoteAmount) : null,
             quote_notes: actionQuoteNotes.trim() || null,
             quote_informed_at: new Date().toISOString(),
-          }, undefined, op)
+          })
           break
         case "approve_quote":
           await onUpdated(envelope.id, {
             status: "quote_approved",
             quote_status: "approved",
             quote_approved_at: new Date().toISOString(),
-          }, undefined, op)
+          })
           break
         case "reject_quote":
           await onUpdated(
             envelope.id,
             { status: "received", quote_status: "rejected" },
-            actionNote.trim() || "Presupuesto rechazado por el cliente",
-            op
+            actionNote.trim() || "Presupuesto rechazado por el cliente"
           )
           break
         case "deliver":
@@ -1124,12 +1123,11 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
               delivered_by: actionDeliveredBy.trim() || null,
               delivery_notes: actionDeliveryNotes.trim() || null,
             },
-            actionDeliveredBy.trim() ? `Entregado a ${actionDeliveredBy.trim()}` : undefined,
-            op
+            actionDeliveredBy.trim() ? `Entregado a ${actionDeliveredBy.trim()}` : undefined
           )
           break
         case "cancel_envelope":
-          await onUpdated(envelope.id, { status: "cancelled" }, actionNote.trim() || undefined, op)
+          await onUpdated(envelope.id, { status: "cancelled" }, actionNote.trim() || undefined)
           break
       }
       setActiveAction(null)
@@ -1753,8 +1751,8 @@ export default function SobresPage() {
     setDetailEnvelope(envelope)
   }
 
-  const handleUpdated = useCallback(async (id: string, updates: Partial<Envelope>, statusNote?: string, createdBy?: string) => {
-    await updateEnvelope(id, updates, statusNote, createdBy)
+  const handleUpdated = useCallback(async (id: string, updates: Partial<Envelope>, statusNote?: string) => {
+    await updateEnvelope(id, updates, statusNote)
 
     // Si cambió el local actual, también actualizamos el objeto joined localmente
     // para que la ubicación se refleje al instante sin esperar un refetch.

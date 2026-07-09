@@ -106,8 +106,8 @@ export default function SettingsPage() {
   const openEditWarehouse = (warehouse: typeof warehouses[0]) => {
     setEditingWarehouse(warehouse)
     setWarehouseName(warehouse.name)
-    setWarehouseDescription(warehouse.description)
-    setWarehouseActive(warehouse.isActive)
+    setWarehouseDescription(warehouse.description ?? "")
+    setWarehouseActive(warehouse.isActive ?? warehouse.is_active ?? true)
     setWarehouseDialogOpen(true)
   }
 

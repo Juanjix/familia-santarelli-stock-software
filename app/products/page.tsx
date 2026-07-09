@@ -472,7 +472,6 @@ function ProductsPageInner() {
               setCurrentPage(1)
             }}
             onClearFilters={handleClearFilters}
-            categories={categoryNames}
           />
 
           <ProductsTable 

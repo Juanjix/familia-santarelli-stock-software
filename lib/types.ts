@@ -239,6 +239,10 @@ export interface Product {
   supplierName?: string
   categoryName?: string
   brandName?: string
+  // Legacy camelCase aliases (mock data + legacy pages)
+  isActive?: boolean
+  totalStock?: number
+  pricingType?: string
 }
 
 export interface Warehouse {

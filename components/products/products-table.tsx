@@ -46,8 +46,8 @@ export function ProductsTable({ products, onEdit, onToggleStatus, onDelete }: Pr
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
 
   const sortedProducts = [...products].sort((a, b) => {
-    const aVal = (a as Record<string, unknown>)[sortField]
-    const bVal = (b as Record<string, unknown>)[sortField]
+    const aVal = (a as unknown as Record<string, unknown>)[sortField]
+    const bVal = (b as unknown as Record<string, unknown>)[sortField]
     if (aVal === undefined || aVal === null) return 1
     if (bVal === undefined || bVal === null) return -1
     if (aVal < bVal) return sortDirection === "asc" ? -1 : 1

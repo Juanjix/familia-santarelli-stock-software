@@ -142,16 +142,14 @@ function NewTransferPanel({
   onClose: () => void
   onCreated: () => void
 }) {
-  const { products, warehouses, employees, getStockByWarehouse, createAndDispatchTransfer } = useInventory()
+  const { products, warehouses, getStockByWarehouse, createAndDispatchTransfer } = useInventory()
   const [fromWarehouse, setFromWarehouse] = useState("")
   const [toWarehouse, setToWarehouse] = useState("")
-  const [operator, setOperator] = useState(() => typeof window !== "undefined" ? localStorage.getItem("last_operator") || "" : "")
   const [lines, setLines] = useState<TransferLine[]>([{ productId: "", quantity: 1 }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const activeWarehouses = warehouses.filter(w => w.is_active !== false)
-  const activeEmployees = employees.filter(e => e.is_active !== false)
 
   const productsInOrigin = useMemo(() => {
     if (!fromWarehouse) return []
@@ -178,7 +176,7 @@ function NewTransferPanel({
     setLines(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l))
   }
 
-  const isValid = fromWarehouse && toWarehouse && fromWarehouse !== toWarehouse && operator &&
+  const isValid = fromWarehouse && toWarehouse && fromWarehouse !== toWarehouse &&
     lines.length > 0 && lines.every(l => l.productId && l.quantity > 0)
 
   async function handleSubmit() {
@@ -188,12 +186,10 @@ function NewTransferPanel({
     const result = await createAndDispatchTransfer(
       fromWarehouse,
       toWarehouse,
-      lines.map(l => ({ productId: l.productId, quantity: l.quantity })),
-      operator
+      lines.map(l => ({ productId: l.productId, quantity: l.quantity }))
     )
     setSaving(false)
     if (!result.success) { setError(result.error || "Error al crear la transferencia"); return }
-    if (typeof window !== "undefined") localStorage.setItem("last_operator", operator)
     onCreated()
   }
 
@@ -207,23 +203,6 @@ function NewTransferPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-        {/* Operador */}
-        <FieldGroup>
-          <Field>
-            <FieldLabel>Operador que despacha</FieldLabel>
-            <Select value={operator} onValueChange={setOperator}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar operador…" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeEmployees.map(e => (
-                  <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </FieldGroup>
-
         {/* Origen / Destino */}
         <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
           <Field>
@@ -332,8 +311,7 @@ function ConfirmReceiptDialog({
   onClose: () => void
   onConfirmed: () => void
 }) {
-  const { employees, confirmStockTransfer } = useInventory()
-  const [operator, setOperator] = useState(() => typeof window !== "undefined" ? localStorage.getItem("last_operator") || "" : "")
+  const { confirmStockTransfer } = useInventory()
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {}
     for (const item of transfer.items ?? []) {
@@ -345,9 +323,8 @@ function ConfirmReceiptDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const activeEmployees = employees.filter(e => e.is_active !== false)
   const hasDifferences = (transfer.items ?? []).some(item => (quantities[item.id] ?? 0) < item.quantity_sent)
-  const isValid = operator && (transfer.items ?? []).every(item => (quantities[item.id] ?? -1) >= 0) && (!hasDifferences || incidentNotes.trim())
+  const isValid = (transfer.items ?? []).every(item => (quantities[item.id] ?? -1) >= 0) && (!hasDifferences || incidentNotes.trim())
 
   async function handleConfirm() {
     if (!isValid) return
@@ -356,12 +333,10 @@ function ConfirmReceiptDialog({
     const result = await confirmStockTransfer(
       transfer.id,
       (transfer.items ?? []).map(item => ({ itemId: item.id, quantityReceived: quantities[item.id] ?? 0 })),
-      operator,
       hasDifferences ? incidentNotes : undefined
     )
     setSaving(false)
     if (!result.success) { setError(result.error || "Error al confirmar"); return }
-    if (typeof window !== "undefined") localStorage.setItem("last_operator", operator)
     onConfirmed()
   }
 
@@ -376,21 +351,6 @@ function ConfirmReceiptDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Operator */}
-          <Field>
-            <FieldLabel>Operador que recibe</FieldLabel>
-            <Select value={operator} onValueChange={setOperator}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar operador…" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeEmployees.map(e => (
-                  <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
           {/* Items */}
           <div className="rounded-md border border-border overflow-hidden">
             <Table>
@@ -494,9 +454,8 @@ function TransferDetailPanel({
   }, [transfer.id, fetchStockTransferEvents])
 
   async function handleCancel() {
-    const by = typeof window !== "undefined" ? localStorage.getItem("last_operator") || "Sistema" : "Sistema"
     setCancelling(true)
-    await cancelStockTransfer(transfer.id, by)
+    await cancelStockTransfer(transfer.id)
     setCancelling(false)
     onRefresh()
   }

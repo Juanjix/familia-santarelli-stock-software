@@ -217,7 +217,7 @@ export default function InventoryPage() {
                       }
                       className="shrink-0"
                     >
-                      {product.total_stock ?? product.totalStock ?? 0}
+                      {product.total_stock ?? 0}
                     </Badge>
                   </div>
 
@@ -297,7 +297,7 @@ export default function InventoryPage() {
                       {product.sku}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      {product.total_stock ?? product.totalStock ?? 0}
+                      {product.total_stock ?? 0}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">

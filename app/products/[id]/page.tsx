@@ -136,16 +136,16 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   }
 
   const stockByWarehouse = getStockByWarehouse(id)
-  const statusConfig = stockStatusConfig[product.stockStatus]
-  const productMovements = movements.filter((m) => m.productId === id).slice(0, 5)
+  const statusConfig = stockStatusConfig[product.stockStatus ?? "in_stock"]
+  const productMovements = movements.filter((m) => (m.productId ?? m.product_id) === id).slice(0, 5)
 
   const openEditDialog = () => {
     setFormName(product.name)
     setFormCategory(product.category)
-    setFormMaterial(product.material)
-    setFormPrice(String(product.price))
-    setFormWeight(String(product.weight))
-    setFormPricingType(product.pricingType)
+    setFormMaterial(product.material ?? "")
+    setFormPrice(String(product.price ?? product.sell_price ?? ""))
+    setFormWeight(String(product.weight ?? ""))
+    setFormPricingType(product.pricingType ?? "")
     setEditDialogOpen(true)
   }
 
@@ -156,7 +156,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       material: formMaterial,
       price: parseFloat(formPrice),
       weight: parseFloat(formWeight),
-      pricingType: formPricingType,
+      pricingType: formPricingType || undefined,
     })
     setEditDialogOpen(false)
     showSuccess("Producto actualizado correctamente")
@@ -210,7 +210,7 @@ const showSuccess = (message: string) => {
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-base font-medium">Información del Producto</CardTitle>
                 <div className="flex items-center gap-2">
-                  {!product.isActive && (
+                  {!(product.is_active ?? product.isActive) && (
                     <Badge variant="outline">Inactivo</Badge>
                   )}
                   <Badge variant="outline" className={cn("font-normal", statusConfig.className)}>
@@ -293,7 +293,7 @@ const showSuccess = (message: string) => {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Precio Base</p>
-                        <p className="font-medium">{formatCurrency(product.price)}</p>
+                        <p className="font-medium">{formatCurrency(product.price ?? product.sell_price ?? 0)}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -302,7 +302,7 @@ const showSuccess = (message: string) => {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Stock Total</p>
-                        <p className="font-medium">{product.totalStock} unidades</p>
+                        <p className="font-medium">{product.total_stock ?? product.totalStock ?? 0} unidades</p>
                       </div>
                     </div>
                   </div>
@@ -355,7 +355,7 @@ const showSuccess = (message: string) => {
                           <div className="h-2 w-32 rounded-full bg-secondary">
                             <div
                               className="h-2 rounded-full bg-primary"
-                              style={{ width: `${Math.min((stock.quantity / Math.max(product.totalStock, 1)) * 100, 100)}%` }}
+                              style={{ width: `${Math.min((stock.quantity / Math.max(product.total_stock ?? product.totalStock ?? 1, 1)) * 100, 100)}%` }}
                             />
                           </div>
                           <span className="w-16 text-right font-mono font-medium">{stock.quantity}</span>
@@ -399,7 +399,7 @@ const showSuccess = (message: string) => {
                           </div>
                           <div className="text-right">
                             <p className="text-xs text-muted-foreground">
-                              <RelativeTime date={movement.date} />
+                              <RelativeTime date={movement.date ?? movement.created_at} />
                             </p>
                             <p className="text-xs text-muted-foreground">{movement.user}</p>
                           </div>
@@ -460,11 +460,11 @@ const showSuccess = (message: string) => {
                 <Separator />
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Precio Base</span>
-                  <span className="font-medium">{formatCurrency(product.price)}</span>
+                  <span className="font-medium">{formatCurrency(product.price ?? product.sell_price ?? 0)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Valor del Stock</span>
-                  <span className="font-medium">{formatCurrency(product.price * product.totalStock)}</span>
+                  <span className="font-medium">{formatCurrency((product.price ?? product.sell_price ?? 0) * (product.total_stock ?? product.totalStock ?? 0))}</span>
                 </div>
               </CardContent>
             </Card>
@@ -476,8 +476,8 @@ const showSuccess = (message: string) => {
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Activo</span>
-                  <Badge variant={product.isActive ? "default" : "secondary"}>
-                    {product.isActive ? "Sí" : "No"}
+                  <Badge variant={(product.is_active ?? product.isActive) ? "default" : "secondary"}>
+                    {(product.is_active ?? product.isActive) ? "Sí" : "No"}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">

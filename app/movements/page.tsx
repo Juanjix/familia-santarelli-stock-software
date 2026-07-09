@@ -44,8 +44,10 @@ export default function MovementsPage() {
 
   const filteredMovements = useMemo(() => {
     return movements.filter(movement => {
-      const matchesSearch = movement.productName.toLowerCase().includes(search.toLowerCase()) ||
-        movement.productId.includes(search)
+      const productName = movement.productName ?? movement.product?.name ?? ""
+      const productId   = movement.productId   ?? movement.product_id  ?? ""
+      const matchesSearch = productName.toLowerCase().includes(search.toLowerCase()) ||
+        productId.includes(search)
       const matchesType = typeFilter === "all" || movement.type === typeFilter
       return matchesSearch && matchesType
     })
@@ -145,8 +147,8 @@ export default function MovementsPage() {
                   </div>
                   
                   <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
-                    <span>{getRelativeTime(movement.date)}</span>
-                    <span>{movement.user}</span>
+                    <span>{getRelativeTime(movement.date ?? movement.created_at)}</span>
+                    <span>{movement.user ?? movement.user_name}</span>
                   </div>
                   
                   {movement.notes && (
@@ -187,14 +189,14 @@ export default function MovementsPage() {
                   <TableRow key={movement.id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium">{getRelativeTime(movement.date)}</span>
-                        <span className="text-xs text-muted-foreground">{formatDate(movement.date)}</span>
+                        <span className="text-sm font-medium">{getRelativeTime(movement.date ?? movement.created_at)}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(movement.date ?? movement.created_at)}</span>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium text-foreground">{movement.productName}</p>
-                        <p className="text-xs text-muted-foreground">ID: {movement.productId}</p>
+                        <p className="font-medium text-foreground">{movement.productName ?? movement.product?.name}</p>
+                        <p className="text-xs text-muted-foreground">ID: {movement.productId ?? movement.product_id}</p>
                       </div>
                     </TableCell>
                     <TableCell>

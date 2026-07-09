@@ -50,7 +50,7 @@ export default function ReportsPage() {
 
     // Recent movements summary
     const todayMovements = movements.filter(m => {
-      const movementDate = new Date(m.date)
+      const movementDate = new Date(m.date ?? m.created_at)
       const today = new Date()
       return movementDate.toDateString() === today.toDateString()
     })

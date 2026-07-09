@@ -121,25 +121,23 @@ interface InventoryContextType {
   deleteEmployee: (id: string) => Promise<{ success: boolean; error?: string }>
   fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
   createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id' | 'pending_transfer_to_warehouse_id' | 'pending_transfer_sent_by' | 'pending_transfer_sent_at'>) => Promise<Envelope | null>
-  updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, createdBy?: string) => Promise<void>
+  updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string) => Promise<void>
   getEnvelopeStatusLog: (envelopeId: string) => Promise<EnvelopeStatusLog[]>
   fetchEnvelopeEvents: (envelopeId: string) => Promise<EnvelopeEvent[]>
-  sendTransfer: (envelopeId: string, fromWarehouseId: string | null, toWarehouseId: string, sentBy?: string) => Promise<{ success: boolean; error?: string }>
-  confirmTransferReceipt: (envelopeId: string, receivedBy?: string) => Promise<{ success: boolean; error?: string }>
+  sendTransfer: (envelopeId: string, fromWarehouseId: string | null, toWarehouseId: string) => Promise<{ success: boolean; error?: string }>
+  confirmTransferReceipt: (envelopeId: string) => Promise<{ success: boolean; error?: string }>
   // ── Stock Transfers ───────────────────────────────────────
   createAndDispatchTransfer: (
     fromWarehouseId: string,
     toWarehouseId: string,
-    items: { productId: string; quantity: number }[],
-    createdBy: string
+    items: { productId: string; quantity: number }[]
   ) => Promise<{ success: boolean; transfer?: StockTransfer; error?: string }>
   confirmStockTransfer: (
     transferId: string,
     receivedItems: { itemId: string; quantityReceived: number }[],
-    receivedBy: string,
     incidentNotes?: string
   ) => Promise<{ success: boolean; error?: string }>
-  cancelStockTransfer: (transferId: string, cancelledBy: string) => Promise<{ success: boolean; error?: string }>
+  cancelStockTransfer: (transferId: string) => Promise<{ success: boolean; error?: string }>
   fetchStockTransfers: (filters?: { status?: StockTransfer['status'] }) => Promise<StockTransfer[]>
   fetchStockTransferEvents: (transferId: string) => Promise<StockTransferEvent[]>
 }
@@ -239,7 +237,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         const productId = s.product_id
         const stockItem: StockByWarehouse = {
           warehouseId: s.warehouse_id,
-          warehouseName: (s.warehouses as { name: string } | null)?.name || "",
+          warehouseName: (s.warehouses as unknown as { name: string } | null)?.name || "",
           quantity: s.quantity,
         }
         if (!stockMap.has(productId)) {
@@ -850,7 +848,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     rejected: 'Presupuesto rechazado por el cliente',
   }
 
-  const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, createdBy?: string): Promise<void> => {
+  const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string): Promise<void> => {
+    const createdBy = currentUserName
     const { data: current } = await supabase
       .from("envelopes")
       .select("status, jeweler_id, quote_status, quote_amount, current_warehouse_id")
@@ -867,7 +866,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       events.push({ event_type: 'status_changed', title: STATUS_EVENT_TITLES[updates.status], detail: statusNote || null })
       const { error: statusLogError } = await supabase.from("envelope_status_log").insert({
         envelope_id: id, from_status: current.status, to_status: updates.status,
-        changed_by: 'Sistema', notes: statusNote || null,
+        changed_by: currentUserName, notes: statusNote || null,
       })
       if (statusLogError) console.error("Error creating envelope_status_log entry:", statusLogError)
     }
@@ -917,10 +916,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const sendTransfer = useCallback(async (
     envelopeId: string,
     fromWarehouseId: string | null,
-    toWarehouseId: string,
-    sentBy?: string
+    toWarehouseId: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const by = sentBy || 'Sistema'
+    const by = currentUserName
 
     const { data: transferRow, error: transferError } = await supabase
       .from("envelope_transfers")
@@ -953,10 +951,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   // Confirmación de recepción física en destino: recién acá se actualiza
   // current_warehouse_id y se cierra el registro de envelope_transfers.
   const confirmTransferReceipt = useCallback(async (
-    envelopeId: string,
-    receivedBy?: string
+    envelopeId: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const by = receivedBy || 'Sistema'
+    const by = currentUserName
 
     const { data: openTransfer, error: findError } = await supabase
       .from("envelope_transfers")
@@ -1049,9 +1046,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const createAndDispatchTransfer = useCallback(async (
     fromWarehouseId: string,
     toWarehouseId: string,
-    items: { productId: string; quantity: number }[],
-    createdBy: string
+    items: { productId: string; quantity: number }[]
   ): Promise<{ success: boolean; transfer?: StockTransfer; error?: string }> => {
+    const createdBy = currentUserName
     if (!items.length) return { success: false, error: "Debe incluir al menos un producto." }
 
     // Generate transfer number via DB function
@@ -1120,9 +1117,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const confirmStockTransfer = useCallback(async (
     transferId: string,
     receivedItems: { itemId: string; quantityReceived: number }[],
-    receivedBy: string,
     incidentNotes?: string
   ): Promise<{ success: boolean; error?: string }> => {
+    const receivedBy = currentUserName
     const { data: transfer, error: findError } = await supabase
       .from("stock_transfers")
       .select(`*, items:stock_transfer_items(*)`)
@@ -1187,9 +1184,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   // Cancela una transferencia en tránsito: devuelve el stock al origen.
   const cancelStockTransfer = useCallback(async (
-    transferId: string,
-    cancelledBy: string
+    transferId: string
   ): Promise<{ success: boolean; error?: string }> => {
+    const cancelledBy = currentUserName
     const { data: transfer, error: findError } = await supabase
       .from("stock_transfers")
       .select(`*, items:stock_transfer_items(*)`)

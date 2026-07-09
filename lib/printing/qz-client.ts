@@ -21,6 +21,7 @@ async function loadQZModule(): Promise<QZModule> {
   _loadPromise = (async () => {
     try {
       // Intenta cargar vía npm (disponible si se instaló qz-tray)
+      // @ts-ignore — qz-tray no tiene tipos TS oficiales
       const mod = await import("qz-tray")
       _qz = mod.default ?? mod
       return _qz
