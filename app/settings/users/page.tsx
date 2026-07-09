@@ -120,11 +120,13 @@ export default function UsersPage() {
     if (!editing || !formName || !formRole) return
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from("app_users")
-        .update({ display_name: formName, role_id: formRole })
-        .eq("id", editing.id)
-      if (error) throw error
+      const res = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editing.id, display_name: formName, role_id: formRole }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
       toast.success("Usuario actualizado")
       setDialog(null)
       await loadUsers()
@@ -136,11 +138,13 @@ export default function UsersPage() {
   }
 
   const toggleActive = async (u: UserRow) => {
-    const { error } = await supabase
-      .from("app_users")
-      .update({ is_active: !u.is_active })
-      .eq("id", u.id)
-    if (error) { toast.error(error.message); return }
+    const res = await fetch("/api/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: u.id, is_active: !u.is_active }),
+    })
+    const json = await res.json()
+    if (!res.ok) { toast.error(json.error); return }
     toast.success(u.is_active ? "Usuario desactivado" : "Usuario activado")
     await loadUsers()
   }

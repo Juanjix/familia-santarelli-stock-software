@@ -95,3 +95,40 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ success: true })
 }
+
+// PATCH /api/users — editar usuario (nombre, rol, is_active)
+export async function PATCH(request: Request) {
+  const cookieStore = await cookies()
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  )
+  const { data: { session } } = await sessionClient.auth.getSession()
+  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+
+  const admin = createAdminClient()
+  const { data: requester } = await admin
+    .from("app_users")
+    .select("role:roles(slug)")
+    .eq("auth_id", session.user.id)
+    .single()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((requester?.role as any)?.slug !== "admin") {
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
+  }
+
+  const { id, display_name, role_id, is_active } = await request.json()
+  if (!id) return NextResponse.json({ error: "Falta id" }, { status: 400 })
+
+  const updates: Record<string, unknown> = {}
+  if (display_name !== undefined) updates.display_name = display_name
+  if (role_id      !== undefined) updates.role_id      = role_id
+  if (is_active    !== undefined) updates.is_active    = is_active
+
+  const { error } = await admin.from("app_users").update(updates).eq("id", id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  return NextResponse.json({ success: true })
+}
