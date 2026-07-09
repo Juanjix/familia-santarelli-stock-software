@@ -56,18 +56,13 @@ export default function UsersPage() {
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from("app_users")
-      .select(`
-        *,
-        role:roles(id, name, slug),
-        session_logs(created_at)
-      `)
-      .order("created_at", { ascending: false })
-
-    setUsers((data as UserRow[]) ?? [])
+    const res = await fetch("/api/users")
+    if (res.ok) {
+      const data = await res.json()
+      setUsers(data ?? [])
+    }
     setLoading(false)
-  }, [supabase])
+  }, [])
 
   const loadRoles = useCallback(async () => {
     const { data } = await supabase.from("roles").select("*").order("name")

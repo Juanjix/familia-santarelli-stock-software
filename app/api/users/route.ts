@@ -11,6 +11,38 @@ function createAdminClient() {
   )
 }
 
+// GET /api/users — listar todos los usuarios (solo admin)
+export async function GET(request: Request) {
+  const cookieStore = await cookies()
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  )
+  const { data: { session } } = await sessionClient.auth.getSession()
+  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+
+  const admin = createAdminClient()
+  const { data: requester } = await admin
+    .from("app_users")
+    .select("role:roles(slug)")
+    .eq("auth_id", session.user.id)
+    .single()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((requester?.role as any)?.slug !== "admin") {
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
+  }
+
+  const { data, error } = await admin
+    .from("app_users")
+    .select("*, role:roles(id, name, slug), session_logs(created_at)")
+    .order("created_at", { ascending: false })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  return NextResponse.json(data)
+}
+
 // POST /api/users — crear nuevo usuario (solo admin)
 export async function POST(request: Request) {
   // Verificar sesión del solicitante con su cookie
