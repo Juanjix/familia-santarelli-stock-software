@@ -1,3 +1,42 @@
+// ── Auth / Usuarios ────────────────────────────────────────
+
+export interface Role {
+  id: string
+  name: string
+  slug: "admin" | "manager" | "employee" | "readonly"
+}
+
+export interface ModulePermission {
+  can_view:   boolean
+  can_create: boolean
+  can_edit:   boolean
+  can_delete: boolean
+}
+
+export type PermissionMap = Record<string, ModulePermission>
+
+export interface AppUser {
+  id:           string
+  auth_id:      string
+  display_name: string
+  email:        string
+  is_active:    boolean
+  last_seen_at: string | null
+  warehouse_id: string | null
+  employee_id:  string | null
+  role:         Role
+  permissions:  PermissionMap
+}
+
+export interface SessionLog {
+  id:         string
+  user_id:    string
+  action:     "login" | "logout" | "token_refresh"
+  user_agent: string | null
+  ip_address: string | null
+  created_at: string
+}
+
 // ── Módulo Sobres ──────────────────────────────────────────
 export type EnvelopeStatus =
   | 'received'
