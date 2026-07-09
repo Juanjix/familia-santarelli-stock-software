@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,14 @@ import { Loader2, Eye, EyeOff } from "lucide-react"
 type View = "login" | "forgot"
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const supabase     = createClient()
