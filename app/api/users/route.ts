@@ -1,36 +1,31 @@
 import { createServerClient } from "@supabase/ssr"
-import { createClient as createAdminClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
 
-async function getSessionUser() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
+// Cliente con service role key (sin cookies — bypassa RLS para operaciones de admin)
+function createAdminClient() {
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {},
-      },
-    }
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { cookies: { getAll: () => [], setAll: () => {} } }
   )
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
 }
 
 // POST /api/users — crear nuevo usuario (solo admin)
 export async function POST(request: Request) {
-  const session = await getSessionUser()
+  // Verificar sesión del solicitante con su cookie
+  const cookieStore = await cookies()
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  )
+  const { data: { session } } = await sessionClient.auth.getSession()
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
   // Verificar que el solicitante es admin
-  const anonClient = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => [], setAll: () => {} } }
-  )
-  const { data: requester } = await anonClient
+  const admin = createAdminClient()
+  const { data: requester } = await admin
     .from("app_users")
     .select("role:roles(slug)")
     .eq("auth_id", session.user.id)
@@ -46,13 +41,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
   }
 
-  const adminClient = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
   // Crear en Auth
-  const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+  const { data: authData, error: authError } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
@@ -60,15 +50,14 @@ export async function POST(request: Request) {
   if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
 
   // Crear en app_users
-  const { error: appError } = await adminClient.from("app_users").insert({
+  const { error: appError } = await admin.from("app_users").insert({
     auth_id:      authData.user.id,
     role_id,
     display_name,
     email,
   })
   if (appError) {
-    // Rollback: eliminar el usuario de Auth si falla la inserción
-    await adminClient.auth.admin.deleteUser(authData.user.id)
+    await admin.auth.admin.deleteUser(authData.user.id)
     return NextResponse.json({ error: appError.message }, { status: 400 })
   }
 
