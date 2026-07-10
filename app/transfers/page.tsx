@@ -183,14 +183,19 @@ function NewTransferPanel({
     if (!isValid) return
     setSaving(true)
     setError(null)
-    const result = await createAndDispatchTransfer(
-      fromWarehouse,
-      toWarehouse,
-      lines.map(l => ({ productId: l.productId, quantity: l.quantity }))
-    )
-    setSaving(false)
-    if (!result.success) { setError(result.error || "No se pudo crear la transferencia. Revisá tu conexión e intentá nuevamente."); return }
-    onCreated()
+    try {
+      const result = await createAndDispatchTransfer(
+        fromWarehouse,
+        toWarehouse,
+        lines.map(l => ({ productId: l.productId, quantity: l.quantity }))
+      )
+      if (!result.success) { setError(result.error || "No se pudo crear la transferencia. Revisá tu conexión e intentá nuevamente."); return }
+      onCreated()
+    } catch {
+      setError("No se pudo crear la transferencia. Revisá tu conexión e intentá nuevamente.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -330,14 +335,19 @@ function ConfirmReceiptDialog({
     if (!isValid) return
     setSaving(true)
     setError(null)
-    const result = await confirmStockTransfer(
-      transfer.id,
-      (transfer.items ?? []).map(item => ({ itemId: item.id, quantityReceived: quantities[item.id] ?? 0 })),
-      hasDifferences ? incidentNotes : undefined
-    )
-    setSaving(false)
-    if (!result.success) { setError(result.error || "No se pudo confirmar la recepción. Revisá tu conexión e intentá nuevamente."); return }
-    onConfirmed()
+    try {
+      const result = await confirmStockTransfer(
+        transfer.id,
+        (transfer.items ?? []).map(item => ({ itemId: item.id, quantityReceived: quantities[item.id] ?? 0 })),
+        hasDifferences ? incidentNotes : undefined
+      )
+      if (!result.success) { setError(result.error || "No se pudo confirmar la recepción. Revisá tu conexión e intentá nuevamente."); return }
+      onConfirmed()
+    } catch {
+      setError("No se pudo confirmar la recepción. Revisá tu conexión e intentá nuevamente.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

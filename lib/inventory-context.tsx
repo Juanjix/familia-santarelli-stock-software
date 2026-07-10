@@ -375,10 +375,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       p_to_warehouse_id: null,
     })
     
-    if (error) {
-      console.error("Error adjusting stock:", error)
-      return
-    }
+    if (error) throw new Error(error.message)
     
     await refreshData()
   }, [supabase, refreshData])
@@ -422,11 +419,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
     
-    if (error) {
-      console.error("Error adding warehouse:", error)
-      return
-    }
-    
+    if (error) throw new Error(error.message)
+
     setWarehouses(prev => [...prev, normalizeWarehouse(data)])
   }, [supabase])
 
@@ -442,12 +436,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       })
       .eq("id", id)
     
-    if (error) {
-      console.error("Error updating warehouse:", error)
-      return
-    }
-    
-    setWarehouses(prev => prev.map(w => 
+    if (error) throw new Error(error.message)
+
+    setWarehouses(prev => prev.map(w =>
       w.id === id ? normalizeWarehouse({ ...w, ...updates }) : w
     ))
   }, [supabase])
@@ -455,11 +446,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const deleteWarehouse = useCallback(async (id: string) => {
     const { error } = await supabase.from("warehouses").delete().eq("id", id)
     
-    if (error) {
-      console.error("Error deleting warehouse:", error)
-      return
-    }
-    
+    if (error) throw new Error(error.message)
+
     setWarehouses(prev => prev.filter(w => w.id !== id))
   }, [supabase])
 
@@ -475,10 +463,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
 
-    if (error) {
-      console.error("Error adding supplier:", error)
-      return null
-    }
+    if (error) throw new Error(error.message)
 
     setSuppliers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     return data
@@ -495,13 +480,13 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         ...(updates.is_active !== undefined && { is_active: updates.is_active }),
       })
       .eq("id", id)
-    if (error) { console.error("Error updating supplier:", error); return }
+    if (error) throw new Error(error.message)
     setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
   }, [supabase])
 
   const deleteSupplier = useCallback(async (id: string) => {
     const { error } = await supabase.from("suppliers").delete().eq("id", id)
-    if (error) { console.error("Error deleting supplier:", error); return }
+    if (error) throw new Error(error.message)
     setSuppliers(prev => prev.filter(s => s.id !== id))
   }, [supabase])
 
@@ -577,11 +562,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
     
-    if (error) {
-      console.error("Error adding category:", error)
-      return null
-    }
-    
+    if (error) throw new Error(error.message)
+
     setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     return data
   }, [supabase])
@@ -597,12 +579,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       })
       .eq("id", id)
     
-    if (error) {
-      console.error("Error updating category:", error)
-      return
-    }
-    
-    setCategories(prev => prev.map(c => 
+    if (error) throw new Error(error.message)
+
+    setCategories(prev => prev.map(c =>
       c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c
     ))
   }, [supabase])
@@ -610,11 +589,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const deleteCategory = useCallback(async (id: string) => {
     const { error } = await supabase.from("categories").delete().eq("id", id)
     
-    if (error) {
-      console.error("Error deleting category:", error)
-      return
-    }
-    
+    if (error) throw new Error(error.message)
+
     setCategories(prev => prev.filter(c => c.id !== id))
     // Cascade en DB elimina los category_attributes de esa categoría automáticamente
     setCategoryAttributes(prev => prev.filter(a => a.category_id !== id))
@@ -635,10 +611,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
 
-    if (error) {
-      console.error("Error adding category attribute:", error)
-      return null
-    }
+    if (error) throw new Error(error.message)
 
     setCategoryAttributes(prev => [...prev, data].sort((a, b) => a.sort_order - b.sort_order))
     return data
@@ -657,10 +630,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       })
       .eq("id", id)
 
-    if (error) {
-      console.error("Error updating category attribute:", error)
-      return
-    }
+    if (error) throw new Error(error.message)
 
     setCategoryAttributes(prev =>
       prev.map(a => a.id === id ? { ...a, ...updates } : a)
@@ -671,10 +641,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const deleteCategoryAttribute = useCallback(async (id: string) => {
     const { error } = await supabase.from("category_attributes").delete().eq("id", id)
 
-    if (error) {
-      console.error("Error deleting category attribute:", error)
-      return
-    }
+    if (error) throw new Error(error.message)
 
     setCategoryAttributes(prev => prev.filter(a => a.id !== id))
   }, [supabase])
@@ -690,11 +657,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .select()
       .single()
     
-    if (error) {
-      console.error("Error adding brand:", error)
-      return null
-    }
-    
+    if (error) throw new Error(error.message)
+
     setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     return data
   }, [supabase])
@@ -710,12 +674,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       })
       .eq("id", id)
     
-    if (error) {
-      console.error("Error updating brand:", error)
-      return
-    }
-    
-    setBrands(prev => prev.map(b => 
+    if (error) throw new Error(error.message)
+
+    setBrands(prev => prev.map(b =>
       b.id === id ? { ...b, ...updates, updated_at: new Date().toISOString() } : b
     ))
   }, [supabase])
@@ -723,59 +684,56 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const deleteBrand = useCallback(async (id: string) => {
     const { error } = await supabase.from("brands").delete().eq("id", id)
     
-    if (error) {
-      console.error("Error deleting brand:", error)
-      return
-    }
-    
+    if (error) throw new Error(error.message)
+
     setBrands(prev => prev.filter(b => b.id !== id))
   }, [supabase])
 
   // ── Customers ────────────────────────────────────────────
   const addCustomer = useCallback(async (data: { first_name: string; last_name: string; dni: string; phone?: string | null; address?: string | null }): Promise<Customer | null> => {
     const { data: created, error } = await supabase.from("customers").insert(data).select().single()
-    if (error) { console.error("Error adding customer:", error); return null }
+    if (error) throw new Error(error.message)
     setCustomers(prev => [...prev, created].sort((a, b) => a.last_name.localeCompare(b.last_name)))
     return created
   }, [supabase])
 
   const updateCustomer = useCallback(async (id: string, updates: Partial<Customer>): Promise<void> => {
     const { error } = await supabase.from("customers").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
-    if (error) { console.error("Error updating customer:", error); return }
+    if (error) throw new Error(error.message)
     setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c))
   }, [supabase])
 
   // ── Jewelers / especialistas (joyeros y relojeros) ───────
   const addJeweler = useCallback(async (name: string, workerType: WorkerType = 'jeweler'): Promise<Jeweler | null> => {
     const { data: created, error } = await supabase.from("jewelers").insert({ name, worker_type: workerType }).select().single()
-    if (error) { console.error("Error adding jeweler:", error); return null }
+    if (error) throw new Error(error.message)
     setJewelers(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
     return created
   }, [supabase])
 
   const updateJeweler = useCallback(async (id: string, updates: Partial<Jeweler>): Promise<void> => {
     const { error } = await supabase.from("jewelers").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
-    if (error) { console.error("Error updating jeweler:", error); return }
+    if (error) throw new Error(error.message)
     setJewelers(prev => prev.map(j => j.id === id ? { ...j, ...updates, updated_at: new Date().toISOString() } : j))
   }, [supabase])
 
   const deleteJeweler = useCallback(async (id: string): Promise<void> => {
     const { error } = await supabase.from("jewelers").delete().eq("id", id)
-    if (error) { console.error("Error deleting jeweler:", error); return }
+    if (error) throw new Error(error.message)
     setJewelers(prev => prev.filter(j => j.id !== id))
   }, [supabase])
 
   // ── Employees ────────────────────────────────────────────
   const addEmployee = useCallback(async (name: string): Promise<Employee | null> => {
     const { data: created, error } = await supabase.from("employees").insert({ name }).select().single()
-    if (error) { console.error("Error adding employee:", error); return null }
+    if (error) throw new Error(error.message)
     setEmployees(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
     return created
   }, [supabase])
 
   const updateEmployee = useCallback(async (id: string, updates: Partial<Employee>): Promise<void> => {
     const { error } = await supabase.from("employees").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
-    if (error) { console.error("Error updating employee:", error); return }
+    if (error) throw new Error(error.message)
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates, updated_at: new Date().toISOString() } : e))
   }, [supabase])
 

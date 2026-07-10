@@ -78,17 +78,21 @@ export default function InventoryPage() {
 
     setSaving(true)
     setTransferResult(null)
-    const success = await transferStock(transferDialog.productId, fromWarehouse, toWarehouse, qty, notes || undefined)
-    setSaving(false)
-
-    if (success) {
-      setTransferResult("success")
-      setTimeout(() => {
-        setTransferDialog({ open: false, productId: null })
-        resetForm()
-      }, 1800)
-    } else {
+    try {
+      const success = await transferStock(transferDialog.productId, fromWarehouse, toWarehouse, qty, notes || undefined)
+      if (success) {
+        setTransferResult("success")
+        setTimeout(() => {
+          setTransferDialog({ open: false, productId: null })
+          resetForm()
+        }, 1800)
+      } else {
+        setTransferResult("error")
+      }
+    } catch {
       setTransferResult("error")
+    } finally {
+      setSaving(false)
     }
   }
 

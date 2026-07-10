@@ -167,6 +167,8 @@ export default function SettingsPage() {
       }
       resetCategoryForm()
       setCategoryDialogOpen(false)
+    } catch {
+      toast.error("No se pudo guardar la categoría. Verificá tu conexión e intentá nuevamente.")
     } finally {
       setSavingCategory(false)
     }
@@ -188,8 +190,12 @@ export default function SettingsPage() {
 
   const handleDeleteCategory = async () => {
     if (!deletingCategory) return
-    await deleteCategory(deletingCategory.id)
-    setDeletingCategory(null)
+    try {
+      await deleteCategory(deletingCategory.id)
+      setDeletingCategory(null)
+    } catch {
+      toast.error("No se pudo eliminar la categoría. Verificá que no tenga productos asociados.")
+    }
   }
 
   // ── Atributos ──────────────────────────────────────────────────────────────
@@ -235,12 +241,11 @@ export default function SettingsPage() {
           input_type: attrType,
           placeholder: attrPlaceholder.trim() || null,
         })
-        resetAttrForm()
       } else {
         const maxOrder = currentCategoryAttrs.length > 0
           ? Math.max(...currentCategoryAttrs.map(a => a.sort_order))
           : 0
-        const result = await addCategoryAttribute({
+        await addCategoryAttribute({
           category_id: editingCategory.id,
           label: attrLabel.trim(),
           key: attrKey.trim(),
@@ -249,12 +254,10 @@ export default function SettingsPage() {
           sort_order: maxOrder + 1,
           is_active: true,
         })
-        if (result) {
-          resetAttrForm()
-        } else {
-          setAttrError("No se pudo guardar el atributo. Verificá que la key no esté repetida en esta categoría.")
-        }
       }
+      resetAttrForm()
+    } catch {
+      setAttrError("No se pudo guardar el atributo. Verificá que la key no esté repetida en esta categoría.")
     } finally {
       setSavingAttr(false)
     }
@@ -262,8 +265,12 @@ export default function SettingsPage() {
 
   const handleDeleteAttr = async () => {
     if (!deletingAttr) return
-    await deleteCategoryAttribute(deletingAttr.id)
-    setDeletingAttr(null)
+    try {
+      await deleteCategoryAttribute(deletingAttr.id)
+      setDeletingAttr(null)
+    } catch {
+      toast.error("No se pudo eliminar el atributo. Intentá nuevamente.")
+    }
   }
 
   // ── Proveedores ────────────────────────────────────────────────────────────
@@ -304,6 +311,8 @@ export default function SettingsPage() {
       }
       resetSupplierForm()
       setSupplierDialogOpen(false)
+    } catch {
+      toast.error("No se pudo guardar el proveedor. Verificá tu conexión e intentá nuevamente.")
     } finally {
       setSavingSupplier(false)
     }
@@ -326,8 +335,12 @@ export default function SettingsPage() {
 
   const handleDeleteSupplier = async () => {
     if (!deletingSupplier) return
-    await deleteSupplier(deletingSupplier.id)
-    setDeletingSupplier(null)
+    try {
+      await deleteSupplier(deletingSupplier.id)
+      setDeletingSupplier(null)
+    } catch {
+      toast.error("No se pudo eliminar el proveedor. Verificá que no tenga productos asociados.")
+    }
   }
 
   // ── Especialistas (joyeros y relojeros) ──────────────────────────────────────
@@ -347,17 +360,13 @@ export default function SettingsPage() {
     try {
       if (editingJeweler) {
         await updateJeweler(editingJeweler.id, { name: jewelerDialogName.trim(), worker_type: jewelerDialogType, is_active: jewelerDialogActive })
-        resetJewelerForm()
-        setJewelerDialogOpen(false)
       } else {
-        const created = await addJeweler(jewelerDialogName.trim(), jewelerDialogType)
-        if (!created) {
-          setJewelerSaveError("No se pudo guardar el especialista. Verificá que la base de datos esté accesible e intentá de nuevo.")
-          return
-        }
-        resetJewelerForm()
-        setJewelerDialogOpen(false)
+        await addJeweler(jewelerDialogName.trim(), jewelerDialogType)
       }
+      resetJewelerForm()
+      setJewelerDialogOpen(false)
+    } catch {
+      setJewelerSaveError("No se pudo guardar el especialista. Verificá que la base de datos esté accesible e intentá de nuevo.")
     } finally {
       setSavingJeweler(false)
     }
@@ -374,8 +383,12 @@ export default function SettingsPage() {
 
   const handleDeleteJeweler = async () => {
     if (!deletingJeweler) return
-    await deleteJeweler(deletingJeweler.id)
-    setDeletingJeweler(null)
+    try {
+      await deleteJeweler(deletingJeweler.id)
+      setDeletingJeweler(null)
+    } catch {
+      toast.error("No se pudo eliminar el especialista. Intentá nuevamente.")
+    }
   }
 
   // ── Empleados ───────────────────────────────────────────────────────────────
@@ -398,6 +411,8 @@ export default function SettingsPage() {
       }
       resetEmployeeForm()
       setEmployeeDialogOpen(false)
+    } catch {
+      toast.error("No se pudo guardar el empleado. Verificá tu conexión e intentá nuevamente.")
     } finally {
       setSavingEmployee(false)
     }
@@ -450,6 +465,8 @@ export default function SettingsPage() {
       }
       resetBrandForm()
       setBrandDialogOpen(false)
+    } catch {
+      toast.error("No se pudo guardar la marca. Verificá tu conexión e intentá nuevamente.")
     } finally {
       setSavingBrand(false)
     }
@@ -463,8 +480,12 @@ export default function SettingsPage() {
 
   const handleDeleteBrand = async () => {
     if (!deletingBrand) return
-    await deleteBrand(deletingBrand.id)
-    setDeletingBrand(null)
+    try {
+      await deleteBrand(deletingBrand.id)
+      setDeletingBrand(null)
+    } catch {
+      toast.error("No se pudo eliminar la marca. Verificá que no tenga productos asociados.")
+    }
   }
 
   const openEditBrand = (brand: Brand) => {
