@@ -968,7 +968,7 @@ interface EnvelopeDetailDialogProps {
 }
 
 function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onPrint }: EnvelopeDetailDialogProps) {
-  const { jewelers, employees, warehouses, fetchEnvelopeEvents, sendTransfer, confirmTransferReceipt } = useInventory()
+  const { jewelers, employees, warehouses, fetchEnvelopeEvents, sendTransfer, confirmTransferReceipt, updateCustomer } = useInventory()
   const [events, setEvents] = useState<EnvelopeEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
 
@@ -1013,27 +1013,30 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
     setActionError(null)
   }
 
+  // Runs only when a DIFFERENT envelope is opened (id changes), not on every data update
+  // of the same envelope. Firing on every prop-reference change caused the action panel to
+  // close mid-save because handleUpdated always creates a new object via {...prev, ...patch}.
   useEffect(() => {
-    if (envelope) {
-      setEditing(false)
-      setActiveAction(null)
-      resetActionForm()
-      // Load events
-      setEventsLoading(true)
-      fetchEnvelopeEvents(envelope.id).then(data => { setEvents(data); setEventsLoading(false) })
-      // Pre-fill editable fields
-      setEditPhone(envelope.customer?.phone || "")
-      setEditAddress(envelope.customer?.address || "")
-      const { option, customDetail } = parseMaterialForEdit(envelope.product_material, envelope.product_material_detail)
-      setEditMaterial(option)
-      setEditMaterialDetail(customDetail)
-      setEditProductWeight(envelope.product_weight != null ? String(envelope.product_weight) : "")
-      setEditPurchasedAtStore(envelope.purchased_at_store)
-      setEditPurchaseDate(envelope.purchase_date || "")
-      setEditEstimatedReadyDate(envelope.estimated_ready_date || "")
-      setEditInternalNotes(envelope.internal_notes || "")
-    }
-  }, [envelope])
+    if (!envelope) return
+    setEditing(false)
+    setActiveAction(null)
+    resetActionForm()
+    setEventsLoading(true)
+    fetchEnvelopeEvents(envelope.id)
+      .then(data => { setEvents(data); setEventsLoading(false) })
+      .catch(() => setEventsLoading(false))
+    setEditPhone(envelope.customer?.phone || "")
+    setEditAddress(envelope.customer?.address || "")
+    const { option, customDetail } = parseMaterialForEdit(envelope.product_material, envelope.product_material_detail)
+    setEditMaterial(option)
+    setEditMaterialDetail(customDetail)
+    setEditProductWeight(envelope.product_weight != null ? String(envelope.product_weight) : "")
+    setEditPurchasedAtStore(envelope.purchased_at_store)
+    setEditPurchaseDate(envelope.purchase_date || "")
+    setEditEstimatedReadyDate(envelope.estimated_ready_date || "")
+    setEditInternalNotes(envelope.internal_notes || "")
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [envelope?.id])
 
   if (!envelope) return null
 
@@ -1043,9 +1046,23 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
   const otherActions = availableActions.filter(a => !QUOTE_ACTIONS.includes(a))
   const isQuoteAction = !!activeAction && QUOTE_ACTIONS.includes(activeAction)
 
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   const handleSaveEdits = async () => {
     setSaving(true)
+    setSaveError(null)
     try {
+      // Save customer contact fields if changed
+      if (envelope.customer?.id) {
+        const phoneChanged = editPhone.trim() !== (envelope.customer.phone || "")
+        const addressChanged = editAddress.trim() !== (envelope.customer.address || "")
+        if (phoneChanged || addressChanged) {
+          await updateCustomer(envelope.customer.id, {
+            phone: editPhone.trim() || null,
+            address: editAddress.trim() || null,
+          })
+        }
+      }
       await onUpdated(envelope.id, {
         product_material: editMaterial || null,
         product_material_detail: editMaterial === "OTROS" ? editMaterialDetail.trim() || null : null,
@@ -1056,7 +1073,12 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
         internal_notes: editInternalNotes.trim() || null,
       })
       setEditing(false)
-      fetchEnvelopeEvents(envelope.id).then(setEvents)
+      setEventsLoading(true)
+      fetchEnvelopeEvents(envelope.id)
+        .then(data => { setEvents(data); setEventsLoading(false) })
+        .catch(() => setEventsLoading(false))
+    } catch {
+      setSaveError("No se pudieron guardar los cambios. Revisá tu conexión e intentá nuevamente.")
     } finally {
       setSaving(false)
     }
@@ -1546,20 +1568,25 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
 
           {/* Corregir datos */}
           {!activeAction && (
-            <div className="flex gap-2">
-              {!editing ? (
-                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditing(true)}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Corregir datos
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancelar</Button>
-                  <Button size="sm" onClick={handleSaveEdits} disabled={saving}>
-                    {saving ? "Guardando..." : "Guardar"}
+            <>
+              <div className="flex gap-2">
+                {!editing ? (
+                  <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditing(true)}>
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Corregir datos
                   </Button>
-                </>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => { setEditing(false); setSaveError(null) }}>Cancelar</Button>
+                    <Button size="sm" onClick={handleSaveEdits} disabled={saving}>
+                      {saving ? "Guardando..." : "Guardar"}
+                    </Button>
+                  </>
+                )}
+              </div>
+              {saveError && (
+                <p className="text-sm text-destructive bg-destructive/10 rounded-md p-2">{saveError}</p>
               )}
-            </div>
+            </>
           )}
 
           {/* Artículo */}

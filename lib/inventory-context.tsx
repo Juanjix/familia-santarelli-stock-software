@@ -858,15 +858,21 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .single()
 
     const { error } = await supabase.from("envelopes").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
-    if (error) { console.error("Error updating envelope:", error); return }
+    if (error) throw new Error(error.message)
 
     const events: { event_type: string; title: string; detail: string | null }[] = []
+    const statusChanged = !!(updates.status && current && updates.status !== current.status)
 
-    // Status change
-    if (updates.status && current && updates.status !== current.status) {
-      events.push({ event_type: 'status_changed', title: STATUS_EVENT_TITLES[updates.status], detail: statusNote || null })
+    // Status change — uses statusNote as detail; for reject_quote (pending→received) the
+    // business event is "quote rejected", not the generic "Sobre recibido" title.
+    if (statusChanged) {
+      const isRejectBack = updates.status === 'received' && current?.status === 'quote_pending'
+      const title = isRejectBack
+        ? 'Presupuesto rechazado'
+        : STATUS_EVENT_TITLES[updates.status!]
+      events.push({ event_type: 'status_changed', title, detail: statusNote || null })
       const { error: statusLogError } = await supabase.from("envelope_status_log").insert({
-        envelope_id: id, from_status: current.status, to_status: updates.status,
+        envelope_id: id, from_status: current!.status, to_status: updates.status!,
         changed_by: currentUserName, notes: statusNote || null,
       })
       if (statusLogError) console.error("Error creating envelope_status_log entry:", statusLogError)
@@ -887,8 +893,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Quote status change (when changed directly, not via status flow)
-    if ('quote_status' in updates && updates.quote_status !== current?.quote_status) {
+    // Quote status change — only when NOT accompanied by a status change that already
+    // describes the same business event. If status changed too, that event is authoritative.
+    if (!statusChanged && 'quote_status' in updates && updates.quote_status !== current?.quote_status) {
       const title = QUOTE_EVENT_TITLES[updates.quote_status as QuoteStatus]
       if (title) {
         const amount = updates.quote_amount ?? current?.quote_amount
