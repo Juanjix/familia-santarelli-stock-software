@@ -997,6 +997,7 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
   const [actionSaving, setActionSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [actionOperator, setActionOperator] = useState<string>(() => {
     if (typeof window !== "undefined") return localStorage.getItem("sobres_operator") || ""
     return ""
@@ -1045,8 +1046,6 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
   const quoteActions = availableActions.filter(a => QUOTE_ACTIONS.includes(a))
   const otherActions = availableActions.filter(a => !QUOTE_ACTIONS.includes(a))
   const isQuoteAction = !!activeAction && QUOTE_ACTIONS.includes(activeAction)
-
-  const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleSaveEdits = async () => {
     setSaving(true)
