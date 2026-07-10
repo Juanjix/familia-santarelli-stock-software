@@ -1,0 +1,59 @@
+"use client"
+
+import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+
+// ── Shared logo mark ────────────────────────────────────────────────────────
+
+function FsLogo() {
+  return (
+    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary shadow-lg">
+      <span className="text-lg font-semibold tracking-tight text-primary-foreground">FS</span>
+    </div>
+  )
+}
+
+// ── Bootstrap / redirect loading ─────────────────────────────────────────────
+
+export function AuthLoadingScreen({ message = "Verificando sesión..." }: { message?: string }) {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-background">
+      <FsLogo />
+      <div className="flex flex-col items-center gap-2">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Signing-out overlay ───────────────────────────────────────────────────────
+
+export function SigningOutOverlay() {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-background animate-in fade-in duration-150">
+      <FsLogo />
+      <div className="flex flex-col items-center gap-2">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">Cerrando sesión...</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Session-expired screen ────────────────────────────────────────────────────
+
+export function SessionExpiredScreen({ onLogin }: { onLogin: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background animate-in fade-in duration-200">
+      <FsLogo />
+      <div className="flex flex-col items-center gap-1 text-center">
+        <p className="text-base font-semibold text-foreground">Tu sesión expiró</p>
+        <p className="text-sm text-muted-foreground">
+          Por seguridad, las sesiones tienen una duración limitada.
+        </p>
+      </div>
+      <Button onClick={onLogin}>Volver a iniciar sesión</Button>
+    </div>
+  )
+}
