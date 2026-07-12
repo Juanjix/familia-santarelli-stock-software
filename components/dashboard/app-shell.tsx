@@ -16,9 +16,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { authState, dismissExpired, signOut } = useAuth()
   const isAuthRoute = useIsAuthRoute()
 
-  // [DEBUG 10] Log every render of AppShell
-  console.log("[AUTH 10] AppShell render — authState:", authState.status, "| isAuthRoute:", isAuthRoute)
-
   // Auth pages (login, reset-password) render without any wrapper.
   if (isAuthRoute) return <>{children}</>
 

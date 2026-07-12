@@ -21,9 +21,11 @@ const SIGN_OUT_OVERLAY_MS = 800
 // Single component responsible for ALL auth-triggered client-side navigation.
 //
 // Navigates only on USER ACTIONS — never on system/automatic state changes:
-//   "signingOut"  → manual logout       → overlay 800ms → router.replace(/login)
-//   "redirecting" → user dismissed a screen (sessionExpired / accountNotProvisioned)
-//                                        → router.replace(/login) immediately
+//   "authenticated" + auth route → bootstrap found session while on /login
+//                                → router.replace(/) immediately
+//   "signingOut"    → manual logout → overlay 800ms → router.replace(/login)
+//   "redirecting"   → user dismissed sessionExpired / accountNotProvisioned
+//                  → router.replace(/login) immediately
 //
 // "unauthenticated" is intentionally NOT handled here — route protection for
 // that case is the middleware's exclusive responsibility.
@@ -35,26 +37,24 @@ export function AuthNavigator({ children }: { children: ReactNode }) {
 
   const isAuthRoute = AUTH_ROUTES.some(r => pathname.startsWith(r))
 
-  // [DEBUG 09] Log every authState change received by AuthNavigator
+  // Authenticated user landed on an auth route (e.g. reloaded /login while
+  // logged in). Send them to the app without adding a history entry.
   useEffect(() => {
-    console.log("[AUTH 09] AuthNavigator — authState:", authState.status, "| pathname:", pathname, "| isAuthRoute:", isAuthRoute)
-  })
+    if (authState.status !== "authenticated") return
+    if (!isAuthRoute) return
+    router.replace("/")
+  }, [authState.status, isAuthRoute, router])
 
   // User action: manual logout — wait for overlay, then navigate.
   useEffect(() => {
     if (authState.status !== "signingOut") return
-    console.log("[AUTH 11] AuthNavigator — signingOut, scheduling router.replace(/login) in", SIGN_OUT_OVERLAY_MS, "ms")
-    const t = setTimeout(() => {
-      console.log("[AUTH 11] AuthNavigator — router.replace(/login) firing now")
-      router.replace("/login")
-    }, SIGN_OUT_OVERLAY_MS)
+    const t = setTimeout(() => router.replace("/login"), SIGN_OUT_OVERLAY_MS)
     return () => clearTimeout(t)
   }, [authState.status, router])
 
   // User action: dismissed sessionExpired or accountNotProvisioned screen.
   useEffect(() => {
     if (authState.status !== "redirecting") return
-    console.log("[AUTH 11] AuthNavigator — redirecting, router.replace(/login)")
     router.replace("/login")
   }, [authState.status, router])
 
