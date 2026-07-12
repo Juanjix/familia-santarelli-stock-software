@@ -1,9 +1,9 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
+import { Loader2, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-// ── Shared logo mark ────────────────────────────────────────────────────────
+// ── Shared logo mark ─────────────────────────────────────────────────────────
 
 function FsLogo() {
   return (
@@ -54,6 +54,27 @@ export function SessionExpiredScreen({ onLogin }: { onLogin: () => void }) {
         </p>
       </div>
       <Button onClick={onLogin}>Volver a iniciar sesión</Button>
+    </div>
+  )
+}
+
+// ── Account not provisioned screen ───────────────────────────────────────────
+
+export function AccountNotProvisionedScreen({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background animate-in fade-in duration-200">
+      <FsLogo />
+      <div className="flex flex-col items-center gap-3 text-center max-w-sm">
+        <ShieldAlert className="h-8 w-8 text-destructive" />
+        <div className="flex flex-col gap-1">
+          <p className="text-base font-semibold text-foreground">Cuenta no habilitada</p>
+          <p className="text-sm text-muted-foreground">
+            Tu cuenta existe pero no está configurada para acceder a esta aplicación.
+            Contactá al administrador del sistema.
+          </p>
+        </div>
+      </div>
+      <Button variant="outline" onClick={onSignOut}>Cerrar sesión</Button>
     </div>
   )
 }

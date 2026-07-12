@@ -9,6 +9,7 @@ import {
   AuthLoadingScreen,
   SigningOutOverlay,
   SessionExpiredScreen,
+  AccountNotProvisionedScreen,
 } from "@/components/auth/session-screen"
 
 const AUTH_ROUTES = ["/login", "/reset-password"]
@@ -17,53 +18,54 @@ const SIGN_OUT_MIN_MS = 800
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
-  const { loading, user, signingOut, sessionExpired, dismissExpired } = useAuth()
+  const { authState, dismissExpired, signOut } = useAuth()
 
   const isAuthRoute = AUTH_ROUTES.some(r => pathname.startsWith(r))
 
-  // Navigate to /login after the signing-out overlay has been visible long enough
+  // Redirect to /login after the signing-out overlay has been visible long enough.
   useEffect(() => {
-    if (!signingOut) return
+    if (authState.status !== "signingOut") return
     const timer = setTimeout(() => router.push("/login"), SIGN_OUT_MIN_MS)
     return () => clearTimeout(timer)
-  }, [signingOut, router])
+  }, [authState.status, router])
 
-  // Redirect to /login when session resolves but no user exists (client-side fallback)
+  // Navigate to /login whenever the state machine decides to redirect.
   useEffect(() => {
-    if (!isAuthRoute && !loading && !signingOut && !sessionExpired && !user) {
-      router.push("/login")
-    }
-  }, [isAuthRoute, loading, signingOut, sessionExpired, user, router])
+    if (authState.status === "redirecting") router.push("/login")
+  }, [authState.status, router])
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  // Auth routes (login, reset-password) render without any wrapper
   if (isAuthRoute) return <>{children}</>
 
-  // Actively signing out → full-screen overlay
-  if (signingOut) return <SigningOutOverlay />
+  switch (authState.status) {
+    case "checking":
+    case "loadingProfile":
+      return <AuthLoadingScreen />
 
-  // Session expired mid-use → friendly prompt, no broken UI
-  if (sessionExpired) {
-    return (
-      <SessionExpiredScreen
-        onLogin={() => { dismissExpired(); router.push("/login") }}
-      />
-    )
+    case "signingOut":
+      return <SigningOutOverlay />
+
+    case "sessionExpired":
+      return (
+        <SessionExpiredScreen
+          onLogin={dismissExpired}
+        />
+      )
+
+    case "accountNotProvisioned":
+      return <AccountNotProvisionedScreen onSignOut={signOut} />
+
+    case "redirecting":
+      return <AuthLoadingScreen message="Redirigiendo..." />
+
+    case "authenticated":
+      return (
+        <InventoryProvider>
+          <DashboardLayout>
+            {children}
+          </DashboardLayout>
+        </InventoryProvider>
+      )
   }
-
-  // Still resolving the session on first load → auth loading screen
-  if (loading) return <AuthLoadingScreen />
-
-  // Session resolved, no user → show redirect screen (useEffect handles navigation)
-  if (!user) return <AuthLoadingScreen message="Redirigiendo..." />
-
-  // Authenticated — render the full app
-  return (
-    <InventoryProvider>
-      <DashboardLayout>
-        {children}
-      </DashboardLayout>
-    </InventoryProvider>
-  )
 }

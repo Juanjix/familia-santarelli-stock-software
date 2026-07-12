@@ -12,18 +12,29 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import type { AppUser, ModulePermission } from "@/lib/types"
 
+// ── State machine ─────────────────────────────────────────────────────────────
+
+export type AuthState =
+  | { status: "checking" }           // montando la app, getSession() en curso
+  | { status: "loadingProfile" }     // JWT válido, fetcheando app_users
+  | { status: "authenticated"; user: AppUser } // sesión + perfil resueltos
+  | { status: "accountNotProvisioned" } // JWT válido pero sin registro en app_users
+  | { status: "sessionExpired" }     // estaba autenticado, SIGNED_OUT automático
+  | { status: "signingOut" }         // logout manual en curso
+  | { status: "redirecting" }        // navegando a /login
+
+// ── Context interface ─────────────────────────────────────────────────────────
+
 interface AuthContextType {
-  user:           AppUser | null
-  loading:        boolean
-  signingOut:     boolean
-  sessionExpired: boolean
-  canView:        (module: string) => boolean
-  canCreate:      (module: string) => boolean
-  canEdit:        (module: string) => boolean
-  canDelete:      (module: string) => boolean
-  perm:           (module: string) => ModulePermission
-  signOut:        () => Promise<void>
-  refreshUser:    () => Promise<void>
+  authState:   AuthState
+  user:        AppUser | null   // derivado: solo presente en estado "authenticated"
+  canView:     (module: string) => boolean
+  canCreate:   (module: string) => boolean
+  canEdit:     (module: string) => boolean
+  canDelete:   (module: string) => boolean
+  perm:        (module: string) => ModulePermission
+  signOut:     () => Promise<void>
+  refreshUser: () => Promise<void>
   dismissExpired: () => void
 }
 
@@ -33,22 +44,24 @@ const DEFAULT_PERM: ModulePermission = {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser]                   = useState<AppUser | null>(null)
-  const [loading, setLoading]             = useState(true)
-  const [signingOut, setSigningOut]       = useState(false)
-  const [sessionExpired, setSessionExpired] = useState(false)
+// ── Provider ──────────────────────────────────────────────────────────────────
 
-  const supabase          = createClient()
-  const signingOutRef     = useRef(false)
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [authState, setAuthState] = useState<AuthState>({ status: "checking" })
+
+  const supabase            = createClient()
+  const signingOutRef       = useRef(false)
   const wasAuthenticatedRef = useRef(false)
 
-  const loadProfile = useCallback(async () => {
+  // Derived convenience accessor — consumers that only need `user` don't have
+  // to switch on authState.status themselves.
+  const user = authState.status === "authenticated" ? authState.user : null
+
+  // Fetch profile from DB without mutating state — callers decide the transition.
+  const fetchProfile = useCallback(async (): Promise<AppUser | null> => {
     const { data, error } = await supabase.rpc("get_current_user_profile")
-    if (error || !data) { setUser(null); return }
-    const profile = data as AppUser
-    wasAuthenticatedRef.current = true
-    setUser(profile)
+    if (error || !data) return null
+    return data as AppUser
   }, [supabase])
 
   const updateLastSeen = useCallback(async (appUserId: string) => {
@@ -59,24 +72,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase])
 
   useEffect(() => {
-    // Bootstrap: resolve session once on mount.
-    // Errors in getSession() or loadProfile() must never block the loading state.
+    // ── Bootstrap: resolve session once on mount ──────────────────────────────
     supabase.auth.getSession()
       .then(async ({ data: { session } }) => {
-        if (session) {
-          try { await loadProfile() } catch { /* profile failed — still unblock */ }
+        if (!session) {
+          setAuthState({ status: "redirecting" })
+          return
         }
-        setLoading(false)
+        setAuthState({ status: "loadingProfile" })
+        try {
+          const profile = await fetchProfile()
+          if (profile) {
+            wasAuthenticatedRef.current = true
+            setAuthState({ status: "authenticated", user: profile })
+          } else {
+            setAuthState({ status: "accountNotProvisioned" })
+          }
+        } catch {
+          setAuthState({ status: "accountNotProvisioned" })
+        }
       })
-      .catch(() => setLoading(false))
+      .catch(() => setAuthState({ status: "redirecting" }))
 
+    // ── Auth state changes (post-mount) ───────────────────────────────────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" && session) {
           signingOutRef.current = false
-          setSigningOut(false)
-          setSessionExpired(false)
-          try { await loadProfile() } catch { /* profile failed */ }
+          setAuthState({ status: "loadingProfile" })
+          try {
+            const profile = await fetchProfile()
+            if (profile) {
+              wasAuthenticatedRef.current = true
+              setAuthState({ status: "authenticated", user: profile })
+            } else {
+              setAuthState({ status: "accountNotProvisioned" })
+            }
+          } catch {
+            setAuthState({ status: "accountNotProvisioned" })
+          }
           supabase.from("session_logs").insert({
             action:     "login",
             user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
@@ -86,21 +120,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === "SIGNED_OUT") {
           const wasActive = wasAuthenticatedRef.current
           wasAuthenticatedRef.current = false
-          setUser(null)
-          // Only show the expired dialog when the session ended without a manual logout
-          if (wasActive && !signingOutRef.current) {
-            setSessionExpired(true)
+          if (signingOutRef.current) {
+            // Manual logout — signingOut state was already set; timer handles redirect.
+            return
           }
+          // Automatic expiry
+          setAuthState(wasActive ? { status: "sessionExpired" } : { status: "redirecting" })
         }
 
         if (event === "TOKEN_REFRESHED" && session) {
-          setUser(prev => {
-            if (prev) updateLastSeen(prev.id)
+          setAuthState(prev => {
+            if (prev.status === "authenticated") updateLastSeen(prev.user.id)
             return prev
           })
         }
-
-        setLoading(false)
       }
     )
 
@@ -116,35 +149,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     signingOutRef.current = true
-    setSigningOut(true)
-    if (user) {
+    setAuthState({ status: "signingOut" })
+    if (authState.status === "authenticated") {
       await supabase.from("session_logs").insert({
         action:     "logout",
         user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
       })
     }
-    await supabase.auth.signOut()
-    setUser(null)
     wasAuthenticatedRef.current = false
-  }, [supabase, user])
+    await supabase.auth.signOut()
+    // SIGNED_OUT event fires but signingOutRef guards prevent state change.
+    // AppShell timer handles the redirect after the overlay delay.
+  }, [supabase, authState.status])
 
+  // Transitions "sessionExpired" → "redirecting", triggering AppShell navigation.
   const dismissExpired = useCallback(() => {
-    setSessionExpired(false)
+    setAuthState({ status: "redirecting" })
   }, [])
+
+  const refreshUser = useCallback(async () => {
+    const profile = await fetchProfile()
+    if (profile) setAuthState({ status: "authenticated", user: profile })
+  }, [fetchProfile])
 
   return (
     <AuthContext.Provider value={{
+      authState,
       user,
-      loading,
-      signingOut,
-      sessionExpired,
-      canView:     (m) => perm(m).can_view,
-      canCreate:   (m) => perm(m).can_create,
-      canEdit:     (m) => perm(m).can_edit,
-      canDelete:   (m) => perm(m).can_delete,
+      canView:   (m) => perm(m).can_view,
+      canCreate: (m) => perm(m).can_create,
+      canEdit:   (m) => perm(m).can_edit,
+      canDelete: (m) => perm(m).can_delete,
       perm,
       signOut,
-      refreshUser: loadProfile,
+      refreshUser,
       dismissExpired,
     }}>
       {children}
