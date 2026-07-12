@@ -59,13 +59,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase])
 
   useEffect(() => {
-    // Bootstrap: resolve session once on mount
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        await loadProfile()
-      }
-      setLoading(false)
-    })
+    // Bootstrap: resolve session once on mount.
+    // Errors in getSession() or loadProfile() must never block the loading state.
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (session) {
+          try { await loadProfile() } catch { /* profile failed — still unblock */ }
+        }
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -73,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           signingOutRef.current = false
           setSigningOut(false)
           setSessionExpired(false)
-          await loadProfile()
+          try { await loadProfile() } catch { /* profile failed */ }
           supabase.from("session_logs").insert({
             action:     "login",
             user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,

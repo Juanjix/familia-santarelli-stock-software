@@ -12,8 +12,6 @@ import {
 } from "@/components/auth/session-screen"
 
 const AUTH_ROUTES = ["/login", "/reset-password"]
-
-// Minimum overlay display time so the transition feels intentional, not like a flicker
 const SIGN_OUT_MIN_MS = 800
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -23,22 +21,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isAuthRoute = AUTH_ROUTES.some(r => pathname.startsWith(r))
 
-  // When signing out, navigate to /login after the minimum overlay time
+  // Navigate to /login after the signing-out overlay has been visible long enough
   useEffect(() => {
     if (!signingOut) return
     const timer = setTimeout(() => router.push("/login"), SIGN_OUT_MIN_MS)
     return () => clearTimeout(timer)
   }, [signingOut, router])
 
+  // Redirect to /login when session resolves but no user exists (client-side fallback)
+  useEffect(() => {
+    if (!isAuthRoute && !loading && !signingOut && !sessionExpired && !user) {
+      router.push("/login")
+    }
+  }, [isAuthRoute, loading, signingOut, sessionExpired, user, router])
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
   // Auth routes (login, reset-password) render without any wrapper
   if (isAuthRoute) return <>{children}</>
 
-  // ── Guards (only for protected routes) ──────────────────────────────────
-
-  // 1. App is actively signing out → full-screen overlay
+  // Actively signing out → full-screen overlay
   if (signingOut) return <SigningOutOverlay />
 
-  // 2. Session expired mid-use → friendly prompt, no broken UI
+  // Session expired mid-use → friendly prompt, no broken UI
   if (sessionExpired) {
     return (
       <SessionExpiredScreen
@@ -47,17 +52,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // 3. Still resolving the session on first load → loading screen
+  // Still resolving the session on first load → auth loading screen
   if (loading) return <AuthLoadingScreen />
 
-  // 4. Session resolved but no user — middleware should have redirected, but
-  //    guard here too to prevent any partial render
-  if (!user) {
-    router.push("/login")
-    return <AuthLoadingScreen message="Redirigiendo..." />
-  }
+  // Session resolved, no user → show redirect screen (useEffect handles navigation)
+  if (!user) return <AuthLoadingScreen message="Redirigiendo..." />
 
-  // 5. Authenticated — render the full app
+  // Authenticated — render the full app
   return (
     <InventoryProvider>
       <DashboardLayout>
