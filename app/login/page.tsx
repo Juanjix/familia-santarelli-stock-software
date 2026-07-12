@@ -50,7 +50,6 @@ function LoginForm() {
 
     const redirect = searchParams.get("redirect") ?? "/"
     router.push(redirect)
-    router.refresh()
   }
 
   const handleForgot = async (e: React.FormEvent) => {

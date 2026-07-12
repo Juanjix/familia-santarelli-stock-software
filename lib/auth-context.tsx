@@ -50,7 +50,9 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>({ status: "checking" })
 
-  const supabase            = createClient()
+  // One stable client instance per AuthProvider mount — never recreated on re-render.
+  const supabaseRef         = useRef(createClient())
+  const supabase            = supabaseRef.current
   const signingOutRef       = useRef(false)
   const wasAuthenticatedRef = useRef(false)
 

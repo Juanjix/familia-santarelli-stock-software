@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/lib/auth-context'
+import { AuthNavigator } from '@/components/auth/auth-navigator'
 import { AppShell } from '@/components/dashboard/app-shell'
 import './globals.css'
 
@@ -29,9 +30,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <AppShell>
-              {children}
-            </AppShell>
+            <AuthNavigator>
+              <AppShell>
+                {children}
+              </AppShell>
+            </AuthNavigator>
           </AuthProvider>
         </ThemeProvider>
         <Analytics />
