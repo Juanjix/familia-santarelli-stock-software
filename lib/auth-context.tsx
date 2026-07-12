@@ -72,31 +72,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase])
 
   useEffect(() => {
-    // ── Bootstrap: resolve session once on mount ──────────────────────────────
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
-        if (!session) {
-          setAuthState({ status: "redirecting" })
-          return
-        }
-        setAuthState({ status: "loadingProfile" })
-        try {
-          const profile = await fetchProfile()
-          if (profile) {
-            wasAuthenticatedRef.current = true
-            setAuthState({ status: "authenticated", user: profile })
-          } else {
-            setAuthState({ status: "accountNotProvisioned" })
-          }
-        } catch {
-          setAuthState({ status: "accountNotProvisioned" })
-        }
-      })
-      .catch(() => setAuthState({ status: "redirecting" }))
-
-    // ── Auth state changes (post-mount) ───────────────────────────────────────
+    // Single authoritative source: onAuthStateChange with INITIAL_SESSION.
+    // Eliminates the race condition between getSession() + SIGNED_IN that caused
+    // two concurrent fetchProfile() calls on every page reload.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // ── Initial page load ────────────────────────────────────────────────
+        if (event === "INITIAL_SESSION") {
+          if (!session) {
+            setAuthState({ status: "redirecting" })
+            return
+          }
+          setAuthState({ status: "loadingProfile" })
+          try {
+            const profile = await fetchProfile()
+            if (profile) {
+              wasAuthenticatedRef.current = true
+              setAuthState({ status: "authenticated", user: profile })
+            } else {
+              setAuthState({ status: "accountNotProvisioned" })
+            }
+          } catch {
+            setAuthState({ status: "accountNotProvisioned" })
+          }
+          return
+        }
+
+        // ── Fresh login ──────────────────────────────────────────────────────
         if (event === "SIGNED_IN" && session) {
           signingOutRef.current = false
           setAuthState({ status: "loadingProfile" })
@@ -115,8 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             action:     "login",
             user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
           }).then(() => {})
+          return
         }
 
+        // ── Session ended ────────────────────────────────────────────────────
         if (event === "SIGNED_OUT") {
           const wasActive = wasAuthenticatedRef.current
           wasAuthenticatedRef.current = false
@@ -124,10 +128,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Manual logout — signingOut state was already set; timer handles redirect.
             return
           }
-          // Automatic expiry
           setAuthState(wasActive ? { status: "sessionExpired" } : { status: "redirecting" })
+          return
         }
 
+        // ── Token refreshed ──────────────────────────────────────────────────
         if (event === "TOKEN_REFRESHED" && session) {
           setAuthState(prev => {
             if (prev.status === "authenticated") updateLastSeen(prev.user.id)
