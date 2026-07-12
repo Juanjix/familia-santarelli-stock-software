@@ -22,20 +22,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isAuthRoute = AUTH_ROUTES.some(r => pathname.startsWith(r))
 
-  // Redirect to /login after the signing-out overlay has been visible long enough.
+  // After the signing-out overlay has shown long enough, navigate to /login.
   useEffect(() => {
     if (authState.status !== "signingOut") return
-    const timer = setTimeout(() => router.push("/login"), SIGN_OUT_MIN_MS)
+    const timer = setTimeout(() => router.replace("/login"), SIGN_OUT_MIN_MS)
     return () => clearTimeout(timer)
   }, [authState.status, router])
 
-  // Navigate to /login for unauthenticated/redirect states — but never from auth routes,
-  // to avoid a loop where INITIAL_SESSION(null) on /login triggers a redirect back to /login
-  // right as the user is logging in.
+  // Redirect unauthenticated/redirecting states to /login immediately.
+  // Guarded by !isAuthRoute to avoid a loop where INITIAL_SESSION(null) on
+  // /login triggers a redirect back to /login while the user is logging in.
   useEffect(() => {
     if (isAuthRoute) return
     if (authState.status === "unauthenticated" || authState.status === "redirecting") {
-      router.push("/login")
+      router.replace("/login")
     }
   }, [isAuthRoute, authState.status, router])
 
@@ -52,18 +52,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return <SigningOutOverlay />
 
     case "sessionExpired":
-      return (
-        <SessionExpiredScreen
-          onLogin={dismissExpired}
-        />
-      )
+      return <SessionExpiredScreen onLogin={dismissExpired} />
 
     case "accountNotProvisioned":
       return <AccountNotProvisionedScreen onSignOut={signOut} />
 
     case "unauthenticated":
     case "redirecting":
-      return <AuthLoadingScreen message="Redirigiendo..." />
+      // No screen — redirect fires immediately via useEffect above.
+      return null
 
     case "authenticated":
       return (

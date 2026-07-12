@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import Link from "next/link"
 import { Loader2, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -13,9 +15,17 @@ function FsLogo() {
   )
 }
 
-// ── Bootstrap / redirect loading ─────────────────────────────────────────────
+// ── Bootstrap / loading ───────────────────────────────────────────────────────
+// After 5 s shows a manual escape link in case something hangs silently.
 
 export function AuthLoadingScreen({ message = "Verificando sesión..." }: { message?: string }) {
+  const [showEscape, setShowEscape] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowEscape(true), 5000)
+    return () => clearTimeout(t)
+  }, [])
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-background">
       <FsLogo />
@@ -23,6 +33,14 @@ export function AuthLoadingScreen({ message = "Verificando sesión..." }: { mess
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         <p className="text-sm text-muted-foreground">{message}</p>
       </div>
+      {showEscape && (
+        <Link
+          href="/login"
+          className="text-sm text-primary underline-offset-4 hover:underline"
+        >
+          Tardando más de lo esperado — Ir a iniciar sesión
+        </Link>
+      )}
     </div>
   )
 }
