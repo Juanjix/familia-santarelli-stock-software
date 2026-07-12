@@ -15,13 +15,14 @@ import type { AppUser, ModulePermission } from "@/lib/types"
 // ── State machine ─────────────────────────────────────────────────────────────
 
 export type AuthState =
-  | { status: "checking" }           // montando la app, getSession() en curso
+  | { status: "checking" }           // montando la app, esperando INITIAL_SESSION
   | { status: "loadingProfile" }     // JWT válido, fetcheando app_users
   | { status: "authenticated"; user: AppUser } // sesión + perfil resueltos
   | { status: "accountNotProvisioned" } // JWT válido pero sin registro en app_users
+  | { status: "unauthenticated" }    // sin sesión en el arranque (estable en /login)
   | { status: "sessionExpired" }     // estaba autenticado, SIGNED_OUT automático
   | { status: "signingOut" }         // logout manual en curso
-  | { status: "redirecting" }        // navegando a /login
+  | { status: "redirecting" }        // transición activa hacia /login (dismissExpired/signout)
 
 // ── Context interface ─────────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // ── Initial page load ────────────────────────────────────────────────
         if (event === "INITIAL_SESSION") {
           if (!session) {
-            setAuthState({ status: "redirecting" })
+            setAuthState({ status: "unauthenticated" })
             return
           }
           setAuthState({ status: "loadingProfile" })
@@ -128,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Manual logout — signingOut state was already set; timer handles redirect.
             return
           }
-          setAuthState(wasActive ? { status: "sessionExpired" } : { status: "redirecting" })
+          setAuthState(wasActive ? { status: "sessionExpired" } : { status: "unauthenticated" })
           return
         }
 

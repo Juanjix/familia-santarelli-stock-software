@@ -29,10 +29,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer)
   }, [authState.status, router])
 
-  // Navigate to /login whenever the state machine decides to redirect.
+  // Navigate to /login for unauthenticated/redirect states — but never from auth routes,
+  // to avoid a loop where INITIAL_SESSION(null) on /login triggers a redirect back to /login
+  // right as the user is logging in.
   useEffect(() => {
-    if (authState.status === "redirecting") router.push("/login")
-  }, [authState.status, router])
+    if (isAuthRoute) return
+    if (authState.status === "unauthenticated" || authState.status === "redirecting") {
+      router.push("/login")
+    }
+  }, [isAuthRoute, authState.status, router])
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     case "accountNotProvisioned":
       return <AccountNotProvisionedScreen onSignOut={signOut} />
 
+    case "unauthenticated":
     case "redirecting":
       return <AuthLoadingScreen message="Redirigiendo..." />
 
