@@ -76,32 +76,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false
 
     // ── Bootstrap via getSession() ────────────────────────────────────────────
-    // INITIAL_SESSION from onAuthStateChange is unreliable in some @supabase/ssr
-    // environments (e.g. Vercel preview). getSession() always resolves and is the
-    // single authoritative source for the initial state. The cancelled flag prevents
-    // state updates if the component unmounts before the async chain finishes.
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
+    // async IIFE so both sync throws and rejected promises are caught in one place.
+    // The cancelled flag prevents state updates after the component unmounts.
+    // The timeout is a last-resort guard: if the client hangs for any reason,
+    // the state unblocks to unauthenticated after 8 s instead of staying stuck.
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) setAuthState({ status: "unauthenticated" })
+    }, 8000)
+
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
         if (cancelled) return
         if (!session) {
           setAuthState({ status: "unauthenticated" })
           return
         }
         setAuthState({ status: "loadingProfile" })
-        try {
-          const profile = await fetchProfile()
-          if (cancelled) return
-          if (profile) {
-            wasAuthenticatedRef.current = true
-            setAuthState({ status: "authenticated", user: profile })
-          } else {
-            setAuthState({ status: "accountNotProvisioned" })
-          }
-        } catch {
-          if (!cancelled) setAuthState({ status: "accountNotProvisioned" })
+        const profile = await fetchProfile()
+        if (cancelled) return
+        if (profile) {
+          wasAuthenticatedRef.current = true
+          setAuthState({ status: "authenticated", user: profile })
+        } else {
+          setAuthState({ status: "accountNotProvisioned" })
         }
-      })
-      .catch(() => { if (!cancelled) setAuthState({ status: "unauthenticated" }) })
+      } catch {
+        if (!cancelled) setAuthState({ status: "unauthenticated" })
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    })()
 
     // ── Post-boot auth events ─────────────────────────────────────────────────
     // INITIAL_SESSION is intentionally ignored here — getSession() handles boot.
