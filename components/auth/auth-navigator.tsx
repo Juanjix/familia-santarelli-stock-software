@@ -35,16 +35,26 @@ export function AuthNavigator({ children }: { children: ReactNode }) {
 
   const isAuthRoute = AUTH_ROUTES.some(r => pathname.startsWith(r))
 
+  // [DEBUG 09] Log every authState change received by AuthNavigator
+  useEffect(() => {
+    console.log("[AUTH 09] AuthNavigator — authState:", authState.status, "| pathname:", pathname, "| isAuthRoute:", isAuthRoute)
+  })
+
   // User action: manual logout — wait for overlay, then navigate.
   useEffect(() => {
     if (authState.status !== "signingOut") return
-    const t = setTimeout(() => router.replace("/login"), SIGN_OUT_OVERLAY_MS)
+    console.log("[AUTH 11] AuthNavigator — signingOut, scheduling router.replace(/login) in", SIGN_OUT_OVERLAY_MS, "ms")
+    const t = setTimeout(() => {
+      console.log("[AUTH 11] AuthNavigator — router.replace(/login) firing now")
+      router.replace("/login")
+    }, SIGN_OUT_OVERLAY_MS)
     return () => clearTimeout(t)
   }, [authState.status, router])
 
   // User action: dismissed sessionExpired or accountNotProvisioned screen.
   useEffect(() => {
     if (authState.status !== "redirecting") return
+    console.log("[AUTH 11] AuthNavigator — redirecting, router.replace(/login)")
     router.replace("/login")
   }, [authState.status, router])
 

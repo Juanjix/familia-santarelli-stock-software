@@ -12,23 +12,34 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import type { AppUser, ModulePermission } from "@/lib/types"
 
+// ── [DEBUG] timing helper ─────────────────────────────────────────────────────
+const t0 = typeof performance !== "undefined" ? performance.now() : Date.now()
+function dbg(step: number, msg: string, extra?: unknown) {
+  const ms = ((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0).toFixed(0)
+  const prefix = `[AUTH ${String(step).padStart(2, "0")} +${ms}ms]`
+  extra !== undefined
+    ? console.log(prefix, msg, extra)
+    : console.log(prefix, msg)
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── State machine ─────────────────────────────────────────────────────────────
 
 export type AuthState =
-  | { status: "checking" }           // montando la app, esperando INITIAL_SESSION
-  | { status: "loadingProfile" }     // JWT válido, fetcheando app_users
-  | { status: "authenticated"; user: AppUser } // sesión + perfil resueltos
-  | { status: "accountNotProvisioned" } // JWT válido pero sin registro en app_users
-  | { status: "unauthenticated" }    // sin sesión en el arranque (estable en /login)
-  | { status: "sessionExpired" }     // estaba autenticado, SIGNED_OUT automático
-  | { status: "signingOut" }         // logout manual en curso
-  | { status: "redirecting" }        // transición activa hacia /login (dismissExpired/signout)
+  | { status: "checking" }
+  | { status: "loadingProfile" }
+  | { status: "authenticated"; user: AppUser }
+  | { status: "accountNotProvisioned" }
+  | { status: "unauthenticated" }
+  | { status: "sessionExpired" }
+  | { status: "signingOut" }
+  | { status: "redirecting" }
 
 // ── Context interface ─────────────────────────────────────────────────────────
 
 interface AuthContextType {
   authState:   AuthState
-  user:        AppUser | null   // derivado: solo presente en estado "authenticated"
+  user:        AppUser | null
   canView:     (module: string) => boolean
   canCreate:   (module: string) => boolean
   canEdit:     (module: string) => boolean
@@ -50,20 +61,27 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>({ status: "checking" })
 
-  // One stable client instance per AuthProvider mount — never recreated on re-render.
   const supabaseRef         = useRef(createClient())
   const supabase            = supabaseRef.current
   const signingOutRef       = useRef(false)
   const wasAuthenticatedRef = useRef(false)
 
-  // Derived convenience accessor — consumers that only need `user` don't have
-  // to switch on authState.status themselves.
   const user = authState.status === "authenticated" ? authState.user : null
 
-  // Fetch profile from DB without mutating state — callers decide the transition.
   const fetchProfile = useCallback(async (): Promise<AppUser | null> => {
+    dbg(6, "loadProfile() — calling get_current_user_profile RPC")
+    const start = performance.now()
     const { data, error } = await supabase.rpc("get_current_user_profile")
-    if (error || !data) return null
+    const elapsed = (performance.now() - start).toFixed(0)
+    if (error) {
+      dbg(7, `get_current_user_profile ERROR after ${elapsed}ms`, error)
+      return null
+    }
+    if (!data) {
+      dbg(7, `get_current_user_profile returned null/empty after ${elapsed}ms`)
+      return null
+    }
+    dbg(7, `get_current_user_profile OK after ${elapsed}ms — user id:`, (data as AppUser).id)
     return data as AppUser
   }, [supabase])
 
@@ -77,59 +95,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
 
-    // ── Bootstrap via getSession() ────────────────────────────────────────────
-    // async IIFE so both sync throws and rejected promises are caught in one place.
-    // The cancelled flag prevents state updates after the component unmounts.
-    // The timeout is a last-resort guard: if the client hangs for any reason,
-    // the state unblocks to unauthenticated after 8 s instead of staying stuck.
+    dbg(5, "Bootstrap — calling getSession()")
     const timeoutId = setTimeout(() => {
-      if (!cancelled) setAuthState({ status: "unauthenticated" })
+      if (!cancelled) {
+        dbg(0, "⚠️  TIMEOUT 8s — getSession/fetchProfile never resolved, forcing unauthenticated")
+        setAuthState({ status: "unauthenticated" })
+      }
     }, 8000)
 
     ;(async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session }, error } = await supabase.auth.getSession() as any
+        if (error) dbg(5, "getSession() returned error", error)
+        dbg(5, `getSession() resolved — session: ${session ? "PRESENT (user: " + session.user?.email + ")" : "NULL"}`)
         if (cancelled) return
         if (!session) {
+          dbg(8, "AuthState → unauthenticated (no session on boot)")
           setAuthState({ status: "unauthenticated" })
           return
         }
+        dbg(8, "AuthState → loadingProfile")
         setAuthState({ status: "loadingProfile" })
         const profile = await fetchProfile()
         if (cancelled) return
         if (profile) {
           wasAuthenticatedRef.current = true
+          dbg(8, "AuthState → authenticated", { userId: profile.id })
           setAuthState({ status: "authenticated", user: profile })
         } else {
+          dbg(8, "AuthState → accountNotProvisioned (profile null)")
           setAuthState({ status: "accountNotProvisioned" })
         }
-      } catch {
+      } catch (err) {
+        dbg(0, "⚠️  Bootstrap THREW — forcing unauthenticated", err)
         if (!cancelled) setAuthState({ status: "unauthenticated" })
       } finally {
         clearTimeout(timeoutId)
       }
     })()
 
-    // ── Post-boot auth events ─────────────────────────────────────────────────
-    // INITIAL_SESSION is intentionally ignored here — getSession() handles boot.
-    // SIGNED_IN only fires on a fresh login, not on page reload with existing session.
+    dbg(4, "onAuthStateChange() — subscription registered")
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === "INITIAL_SESSION") return
+        dbg(4, `onAuthStateChange fired — event: ${event}`, { hasSession: !!session })
 
-        // ── Fresh login ────────────────────────────────────────────────────
+        if (event === "INITIAL_SESSION") {
+          dbg(4, "INITIAL_SESSION — ignored (bootstrap uses getSession())")
+          return
+        }
+
         if (event === "SIGNED_IN" && session) {
+          dbg(4, "SIGNED_IN — starting loadProfile flow")
           signingOutRef.current = false
+          dbg(8, "AuthState → loadingProfile (post SIGNED_IN)")
           setAuthState({ status: "loadingProfile" })
           try {
             const profile = await fetchProfile()
             if (profile) {
               wasAuthenticatedRef.current = true
+              dbg(8, "AuthState → authenticated (post SIGNED_IN)", { userId: profile.id })
               setAuthState({ status: "authenticated", user: profile })
             } else {
+              dbg(8, "AuthState → accountNotProvisioned (post SIGNED_IN, profile null)")
               setAuthState({ status: "accountNotProvisioned" })
             }
-          } catch {
+          } catch (err) {
+            dbg(0, "⚠️  fetchProfile threw after SIGNED_IN", err)
             setAuthState({ status: "accountNotProvisioned" })
           }
           supabase.from("session_logs").insert({
@@ -139,17 +170,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        // ── Session ended ──────────────────────────────────────────────────
         if (event === "SIGNED_OUT") {
           const wasActive = wasAuthenticatedRef.current
+          dbg(4, `SIGNED_OUT — wasActive: ${wasActive}, signingOutRef: ${signingOutRef.current}`)
           wasAuthenticatedRef.current = false
           if (signingOutRef.current) return
+          const next = wasActive ? "sessionExpired" : "unauthenticated"
+          dbg(8, `AuthState → ${next} (auto SIGNED_OUT)`)
           setAuthState(wasActive ? { status: "sessionExpired" } : { status: "unauthenticated" })
           return
         }
 
-        // ── Token refreshed ────────────────────────────────────────────────
         if (event === "TOKEN_REFRESHED" && session) {
+          dbg(4, "TOKEN_REFRESHED — updating last_seen, keeping authenticated")
           setAuthState(prev => {
             if (prev.status === "authenticated") updateLastSeen(prev.user.id)
             return prev
@@ -172,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const signOut = useCallback(async () => {
+    dbg(4, "signOut() called")
     signingOutRef.current = true
     setAuthState({ status: "signingOut" })
     if (authState.status === "authenticated") {
@@ -182,12 +216,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     wasAuthenticatedRef.current = false
     await supabase.auth.signOut()
-    // SIGNED_OUT event fires but signingOutRef guards prevent state change.
-    // AppShell timer handles the redirect after the overlay delay.
   }, [supabase, authState.status])
 
-  // Transitions "sessionExpired" → "redirecting", triggering AppShell navigation.
   const dismissExpired = useCallback(() => {
+    dbg(8, "AuthState → redirecting (dismissExpired)")
     setAuthState({ status: "redirecting" })
   }, [])
 

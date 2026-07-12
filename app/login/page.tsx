@@ -36,9 +36,16 @@ function LoginForm() {
     setLoading(true)
     setError(null)
 
+    // [DEBUG 01] Form submitted
+    console.log("[AUTH 01] Submit — calling signInWithPassword()", { email })
+    const t1 = performance.now()
+
     const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const elapsed = (performance.now() - t1).toFixed(0)
 
     if (error) {
+      // [DEBUG 02] signInWithPassword failed
+      console.log(`[AUTH 02] signInWithPassword() ERROR after ${elapsed}ms`, error.message)
       setError(
         error.message === "Invalid login credentials"
           ? "Email o contraseña incorrectos"
@@ -48,7 +55,10 @@ function LoginForm() {
       return
     }
 
+    // [DEBUG 02] signInWithPassword succeeded
+    console.log(`[AUTH 02] signInWithPassword() OK after ${elapsed}ms — calling router.push`)
     const redirect = searchParams.get("redirect") ?? "/"
+    console.log("[AUTH 11] router.push →", redirect)
     router.push(redirect)
   }
 
