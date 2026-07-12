@@ -40,10 +40,9 @@ const navGestion = [
 ]
 
 const navConfiguracion = [
-  { name: "Etiquetas",      href: "/labels",         icon: Tags,      module: "labels" },
-  { name: "Depósitos",      href: "/warehouses",     icon: Warehouse, module: "warehouses" },
-  { name: "Configuración",  href: "/settings",       icon: Settings,  module: "settings" },
-  { name: "Usuarios",       href: "/settings/users", icon: Users,     module: "users" },
+  { name: "Etiquetas",     href: "/labels",     icon: Tags,      module: "labels" },
+  { name: "Depósitos",     href: "/warehouses", icon: Warehouse, module: "warehouses" },
+  { name: "Configuración", href: "/settings",   icon: Settings,  module: "settings" },
 ]
 
 function NavGroup({

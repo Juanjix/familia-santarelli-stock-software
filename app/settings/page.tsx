@@ -53,7 +53,10 @@ import {
   ChevronDown,
   Hash,
   Type,
+  ArrowRight,
 } from "lucide-react"
+import Link from "next/link"
+import { useAuth } from "@/lib/auth-context"
 import type { Brand, Category, CategoryAttribute, Supplier, Jeweler, WorkerType, Employee } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -77,6 +80,8 @@ export default function SettingsPage() {
     employees, addEmployee, updateEmployee, deleteEmployee,
     products,
   } = useInventory()
+
+  const { canView } = useAuth()
 
   const [businessName, setBusinessName] = useState("Familia Santarelli")
   const [lowStockThreshold, setLowStockThreshold] = useState("5")
@@ -1467,18 +1472,25 @@ export default function SettingsPage() {
           </AlertDialog>
 
           {/* Usuarios */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Usuarios
-              </CardTitle>
-              <CardDescription>Gestión de usuarios del sistema</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">La gestión de usuarios estará disponible próximamente.</p>
-            </CardContent>
-          </Card>
+          {canView("users") && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Usuarios
+                </CardTitle>
+                <CardDescription>Gestioná los usuarios y sus permisos de acceso al sistema</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" asChild>
+                  <Link href="/settings/users" className="flex items-center gap-2">
+                    Gestionar usuarios
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
         </div>
       </main>
