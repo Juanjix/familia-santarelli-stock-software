@@ -73,33 +73,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase])
 
   useEffect(() => {
-    // Single authoritative source: onAuthStateChange with INITIAL_SESSION.
-    // Eliminates the race condition between getSession() + SIGNED_IN that caused
-    // two concurrent fetchProfile() calls on every page reload.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // ── Initial page load ────────────────────────────────────────────────
-        if (event === "INITIAL_SESSION") {
-          if (!session) {
-            setAuthState({ status: "unauthenticated" })
-            return
-          }
-          setAuthState({ status: "loadingProfile" })
-          try {
-            const profile = await fetchProfile()
-            if (profile) {
-              wasAuthenticatedRef.current = true
-              setAuthState({ status: "authenticated", user: profile })
-            } else {
-              setAuthState({ status: "accountNotProvisioned" })
-            }
-          } catch {
-            setAuthState({ status: "accountNotProvisioned" })
-          }
+    let cancelled = false
+
+    // ── Bootstrap via getSession() ────────────────────────────────────────────
+    // INITIAL_SESSION from onAuthStateChange is unreliable in some @supabase/ssr
+    // environments (e.g. Vercel preview). getSession() always resolves and is the
+    // single authoritative source for the initial state. The cancelled flag prevents
+    // state updates if the component unmounts before the async chain finishes.
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (cancelled) return
+        if (!session) {
+          setAuthState({ status: "unauthenticated" })
           return
         }
+        setAuthState({ status: "loadingProfile" })
+        try {
+          const profile = await fetchProfile()
+          if (cancelled) return
+          if (profile) {
+            wasAuthenticatedRef.current = true
+            setAuthState({ status: "authenticated", user: profile })
+          } else {
+            setAuthState({ status: "accountNotProvisioned" })
+          }
+        } catch {
+          if (!cancelled) setAuthState({ status: "accountNotProvisioned" })
+        }
+      })
+      .catch(() => { if (!cancelled) setAuthState({ status: "unauthenticated" }) })
 
-        // ── Fresh login ──────────────────────────────────────────────────────
+    // ── Post-boot auth events ─────────────────────────────────────────────────
+    // INITIAL_SESSION is intentionally ignored here — getSession() handles boot.
+    // SIGNED_IN only fires on a fresh login, not on page reload with existing session.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "INITIAL_SESSION") return
+
+        // ── Fresh login ────────────────────────────────────────────────────
         if (event === "SIGNED_IN" && session) {
           signingOutRef.current = false
           setAuthState({ status: "loadingProfile" })
@@ -121,19 +132,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        // ── Session ended ────────────────────────────────────────────────────
+        // ── Session ended ──────────────────────────────────────────────────
         if (event === "SIGNED_OUT") {
           const wasActive = wasAuthenticatedRef.current
           wasAuthenticatedRef.current = false
-          if (signingOutRef.current) {
-            // Manual logout — signingOut state was already set; timer handles redirect.
-            return
-          }
+          if (signingOutRef.current) return
           setAuthState(wasActive ? { status: "sessionExpired" } : { status: "unauthenticated" })
           return
         }
 
-        // ── Token refreshed ──────────────────────────────────────────────────
+        // ── Token refreshed ────────────────────────────────────────────────
         if (event === "TOKEN_REFRESHED" && session) {
           setAuthState(prev => {
             if (prev.status === "authenticated") updateLastSeen(prev.user.id)
@@ -143,7 +151,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
