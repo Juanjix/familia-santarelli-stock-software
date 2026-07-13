@@ -52,9 +52,6 @@ function generateSKU(category: string): string {
   return `${prefix}-${String(Date.now()).slice(-5)}`
 }
 
-function generateBarcode(): string {
-  return `78${Math.random().toString().slice(2, 14)}`
-}
 
 function ProductsPageInner() {
   const { products, suppliers, categories, brands, categoryAttributes, warehouses, addProduct, updateProduct, deleteProduct, toggleProductStatus, addSupplier, addCategory, addBrand, adjustStock, loading } = useInventory()
@@ -85,6 +82,7 @@ function ProductsPageInner() {
   const [formBrand, setFormBrand] = useState("")
   const [formMaterial, setFormMaterial] = useState("")
   const [formBarcode, setFormBarcode] = useState("")
+  const [barcodeError, setBarcodeError] = useState<string | null>(null)
   const [formPrice, setFormPrice] = useState("")
   const [formCostPrice, setFormCostPrice] = useState("")
   const [formWeight, setFormWeight] = useState("")
@@ -188,6 +186,7 @@ function ProductsPageInner() {
     setFormBrand("")
     setFormMaterial("")
     setFormBarcode("")
+    setBarcodeError(null)
     setFormPrice("")
     setFormCostPrice("")
     setFormWeight("")
@@ -276,6 +275,7 @@ function ProductsPageInner() {
     setFormBrand(product.brand_id || "")
     setFormMaterial(product.material || "")
     setFormBarcode(product.barcode || "")
+    setBarcodeError(null)
     setFormPrice(String(product.sell_price || product.price || 0))
     setFormCostPrice(String(product.cost_price || 0))
     setFormWeight(String(product.weight || 0))
@@ -298,7 +298,20 @@ function ProductsPageInner() {
 
   const handleSave = async () => {
     if (!formName || !effectiveCategory || !formPrice) return
-    
+
+    // Validate barcode uniqueness if the user entered one manually
+    const trimmedBarcode = formBarcode.trim()
+    if (trimmedBarcode) {
+      const conflict = products.find(
+        p => p.barcode === trimmedBarcode && p.id !== editingProduct?.id
+      )
+      if (conflict) {
+        setBarcodeError("Ya existe otro producto con ese código de barras.")
+        return
+      }
+    }
+    setBarcodeError(null)
+
     setSaving(true)
     try {
       const supplierId = formSupplierId || null
@@ -771,9 +784,17 @@ function ProductsPageInner() {
                 <Label>Código de Barras <span className="text-xs font-normal text-muted-foreground">(Opcional)</span></Label>
                 <Input
                   value={formBarcode}
-                  onChange={(e) => setFormBarcode(e.target.value)}
-                  placeholder="Escanear o ingresar manualmente"
+                  onChange={(e) => {
+                    setFormBarcode(e.target.value)
+                    if (barcodeError) setBarcodeError(null)
+                  }}
+                  placeholder="Se generará automáticamente si lo dejás vacío."
+                  className={barcodeError ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
+                {barcodeError
+                  ? <p className="text-xs text-destructive">{barcodeError}</p>
+                  : <p className="text-xs text-muted-foreground">Podés ingresar el código del fabricante o dejar el campo vacío para que el sistema genere uno automáticamente.</p>
+                }
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
