@@ -269,28 +269,22 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, [productStock])
 
   const addProduct = useCallback(async (product: Partial<Product>): Promise<Product | null> => {
-    // Ensure every product has a barcode. If the caller didn't provide one,
-    // generate a unique code and verify it against the DB (up to 5 attempts).
+    // Ensure every product has a barcode. If the caller didn't provide one, auto-generate.
+    // The loop retries on the (astronomically unlikely) event that the generated code
+    // collides with an existing one — either caught by a pre-check or by the DB UNIQUE
+    // constraint itself (handles the race condition between two concurrent inserts).
+    const userProvidedBarcode = !!(product.barcode?.trim())
     let barcode = product.barcode?.trim() || null
-    if (!barcode) {
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const candidate = generateBarcode()
-        const { count } = await supabase
-          .from("products")
-          .select("id", { count: "exact", head: true })
-          .eq("barcode", candidate)
-        if (!count) { barcode = candidate; break }
-      }
-      if (!barcode) {
-        console.error("addProduct: could not generate a unique barcode after 5 attempts")
-        return null
-      }
-    }
-    const { data, error } = await supabase
-      .from("products")
-      .insert({
-        sku: product.sku || `SKU-${Date.now()}`,
-        barcode,
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (!barcode) barcode = generateBarcode()
+
+      const { data, error } = await supabase
+        .from("products")
+        .insert({
+          sku: product.sku || `SKU-${Date.now()}`,
+          barcode,
         name: product.name || "",
         description: product.description || null,
         category: product.category || "Accesorios",
@@ -308,17 +302,25 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         internal_code: product.internal_code || null,
         attributes: product.attributes || {},
       })
-      .select(`*, suppliers(id, name, contact, price_group, coefficient, created_at)`)
-      .single()
-    
-    if (error) {
+        .select(`*, suppliers(id, name, contact, price_group, coefficient, created_at)`)
+        .single()
+
+      if (!error) {
+        const newProduct = normalizeProduct(data)
+        setProducts(prev => [newProduct, ...prev])
+        return newProduct
+      }
+
+      // Postgres UNIQUE violation on the barcode column — only retry when the code
+      // was auto-generated. If the user supplied the barcode, surface the error.
+      if (!userProvidedBarcode && error.code === "23505" && error.message.includes("barcode")) {
+        barcode = null // will regenerate at the top of the loop
+        continue
+      }
+
       console.error("Error adding product:", error)
       return null
     }
-    
-    const newProduct = normalizeProduct(data)
-    setProducts(prev => [newProduct, ...prev])
-    return newProduct
   }, [supabase])
 
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {

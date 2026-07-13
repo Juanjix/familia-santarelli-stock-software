@@ -1,11 +1,15 @@
 /**
- * Generates a CODE128-compatible barcode string.
+ * Generates a 16-character numeric barcode string compatible with CODE128.
  *
- * Format: "78" + 8 trailing digits of current timestamp + 6 cryptographically random digits = 16 chars.
- * - Timestamp component ensures temporal uniqueness across separate sessions.
- * - Crypto random component prevents collisions within the same millisecond.
- * - Does NOT perform a DB uniqueness check — callers that write to the DB must
- *   verify uniqueness themselves (see addProduct in inventory-context.tsx).
+ * Format: "78" + 8 trailing digits of current timestamp + 6 cryptographic random digits
+ *
+ *   "78"         — prefix, avoids leading zeros
+ *   xxxxxxxx     — last 8 digits of Date.now() (ms since epoch), ~3-year cycle
+ *   yyyyyy       — 6 digits from crypto.getRandomValues(), 1-in-1,000,000 collision chance
+ *                  per millisecond; effectively zero collision risk at any realistic scale
+ *
+ * This function does NOT check database uniqueness. Callers that persist the code
+ * must verify it is unique and retry if necessary (see addProduct in inventory-context.tsx).
  */
 export function generateBarcode(): string {
   const ts = Date.now().toString().slice(-8)

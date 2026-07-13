@@ -83,6 +83,7 @@ function ProductsPageInner() {
   const [formMaterial, setFormMaterial] = useState("")
   const [formBarcode, setFormBarcode] = useState("")
   const [barcodeError, setBarcodeError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [formPrice, setFormPrice] = useState("")
   const [formCostPrice, setFormCostPrice] = useState("")
   const [formWeight, setFormWeight] = useState("")
@@ -187,6 +188,7 @@ function ProductsPageInner() {
     setFormMaterial("")
     setFormBarcode("")
     setBarcodeError(null)
+    setSaveError(null)
     setFormPrice("")
     setFormCostPrice("")
     setFormWeight("")
@@ -276,6 +278,7 @@ function ProductsPageInner() {
     setFormMaterial(product.material || "")
     setFormBarcode(product.barcode || "")
     setBarcodeError(null)
+    setSaveError(null)
     setFormPrice(String(product.sell_price || product.price || 0))
     setFormCostPrice(String(product.cost_price || 0))
     setFormWeight(String(product.weight || 0))
@@ -311,6 +314,7 @@ function ProductsPageInner() {
       }
     }
     setBarcodeError(null)
+    setSaveError(null)
 
     setSaving(true)
     try {
@@ -388,8 +392,13 @@ function ProductsPageInner() {
           internal_code: formInternalCode || null,
         })
 
+        if (!newProduct) {
+          setSaveError("No se pudo guardar el producto. Revisá tu conexión e intentá nuevamente.")
+          return
+        }
+
         // Stock inicial: solo si el usuario eligió depósito y cantidad
-        if (newProduct && formInitialWarehouse && formInitialStock && parseInt(formInitialStock) > 0) {
+        if (formInitialWarehouse && formInitialStock && parseInt(formInitialStock) > 0) {
           await adjustStock(newProduct.id, formInitialWarehouse, parseInt(formInitialStock), "in", "Stock inicial")
         }
 
@@ -1001,13 +1010,19 @@ function ProductsPageInner() {
             </div>
           </div>
           
+          {saveError && (
+            <p className="shrink-0 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2 mx-6">
+              {saveError}
+            </p>
+          )}
+
           <DialogFooter className="shrink-0 pt-2">
             <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleSave}
-              disabled={!formName || !effectiveCategory || !formPrice || saving}
+              disabled={!formName || !effectiveCategory || !formPrice || saving || !!barcodeError}
             >
               {saving ? "Guardando..." : editingProduct ? "Guardar Cambios" : "Crear Producto"}
             </Button>
