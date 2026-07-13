@@ -48,6 +48,7 @@ import {
   ArrowLeft,
   TruckIcon,
 } from "lucide-react"
+import { ProductSearchCombobox } from "@/components/products/product-search-combobox"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -253,22 +254,13 @@ function NewTransferPanel({
               return (
                 <div key={idx} className="flex items-start gap-2">
                   <div className="flex-1">
-                    <Select
-                      value={line.productId}
-                      onValueChange={v => updateLine(idx, "productId", v)}
+                    <ProductSearchCombobox
+                      products={productsInOrigin}
+                      selectedProductId={line.productId}
+                      onSelect={v => updateLine(idx, "productId", v)}
+                      getStockInWarehouse={getAvailableQty}
                       disabled={!fromWarehouse}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder={fromWarehouse ? "Seleccionar producto…" : "Seleccioná origen primero"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {productsInOrigin.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} <span className="text-muted-foreground">(stock: {getAvailableQty(p.id)})</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   </div>
                   <Input
                     type="number"
