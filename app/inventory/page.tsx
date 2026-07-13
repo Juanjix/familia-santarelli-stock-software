@@ -64,8 +64,43 @@ export default function InventoryPage() {
     })
   }, [products, search, warehouseFilter, getStockByWarehouse])
 
+  const adjustProduct = selectedProduct && adjustDialog.productId
+    ? getStockByWarehouse(adjustDialog.productId) || []
+    : []
+
+  const adjustWarehouseStock = selectedWarehouse
+    ? (adjustProduct.find(s => s.warehouseId === selectedWarehouse)?.quantity ?? 0)
+    : null
+
+  const handleAdjustWarehouseChange = (val: string) => {
+    setSelectedWarehouse(val)
+    setQuantityError(null)
+    if (adjustDialog.type === "out" && quantity) {
+      const stock = adjustProduct.find(s => s.warehouseId === val)?.quantity ?? 0
+      const n = parseInt(quantity)
+      if (!isNaN(n) && n > stock) {
+        setQuantityError(`Stock insuficiente — hay ${stock} unidad${stock !== 1 ? "es" : ""} disponible${stock !== 1 ? "s" : ""}`)
+      }
+    }
+  }
+
+  const handleAdjustQuantityChange = (val: string) => {
+    setQuantity(val)
+    if (adjustDialog.type === "out" && selectedWarehouse && val) {
+      const n = parseInt(val)
+      const stock = adjustWarehouseStock ?? 0
+      if (!isNaN(n) && n > stock) {
+        setQuantityError(`Stock insuficiente — hay ${stock} unidad${stock !== 1 ? "es" : ""} disponible${stock !== 1 ? "s" : ""}`)
+      } else {
+        setQuantityError(null)
+      }
+    } else {
+      setQuantityError(null)
+    }
+  }
+
   const handleAdjust = async () => {
-    if (!adjustDialog.productId || !selectedWarehouse || !quantity) return
+    if (!adjustDialog.productId || !selectedWarehouse || !quantity || quantityError) return
     await adjustStock(adjustDialog.productId, selectedWarehouse, parseInt(quantity), adjustDialog.type, notes || undefined)
     setAdjustDialog({ open: false, productId: null, type: "in" })
     resetForm()
@@ -385,18 +420,33 @@ export default function InventoryPage() {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label>Depósito</Label>
-              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+              <Select value={selectedWarehouse} onValueChange={handleAdjustWarehouseChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar depósito" />
                 </SelectTrigger>
                 <SelectContent>
-                  {warehouses.filter(w => w.isActive).map(warehouse => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </SelectItem>
-                  ))}
+                  {warehouses.filter(w => w.isActive).map(warehouse => {
+                    const stock = adjustProduct.find(s => s.warehouseId === warehouse.id)?.quantity ?? 0
+                    const disableOnOut = adjustDialog.type === "out" && stock === 0
+                    return (
+                      <SelectItem key={warehouse.id} value={warehouse.id} disabled={disableOnOut}>
+                        {warehouse.name}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {disableOnOut ? "(sin stock)" : `(${stock} unidad${stock !== 1 ? "es" : ""})`}
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
+              {selectedWarehouse && adjustWarehouseStock !== null && (
+                <p className="text-xs text-muted-foreground">
+                  {adjustDialog.type === "out" ? "Disponible" : "Stock actual"}:{" "}
+                  <span className="font-semibold text-foreground">
+                    {adjustWarehouseStock} unidad{adjustWarehouseStock !== 1 ? "es" : ""}
+                  </span>
+                </p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label>Cantidad</Label>
@@ -404,9 +454,13 @@ export default function InventoryPage() {
                 type="number"
                 min="1"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="Ingrese cantidad"
+                onChange={(e) => handleAdjustQuantityChange(e.target.value)}
+                placeholder={adjustDialog.type === "out" && selectedWarehouse ? `Máx. ${adjustWarehouseStock}` : "Ingrese cantidad"}
+                className={quantityError ? "border-destructive focus-visible:ring-destructive" : ""}
               />
+              {quantityError && (
+                <p className="text-xs text-destructive">{quantityError}</p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label>Notas (opcional)</Label>
@@ -421,7 +475,7 @@ export default function InventoryPage() {
             <Button variant="outline" onClick={() => { setAdjustDialog({ open: false, productId: null, type: "in" }); resetForm(); }} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleAdjust} disabled={!selectedWarehouse || !quantity} className="w-full sm:w-auto">
+            <Button onClick={handleAdjust} disabled={!selectedWarehouse || !quantity || !!quantityError} className="w-full sm:w-auto">
               Confirmar
             </Button>
           </DialogFooter>
