@@ -130,12 +130,17 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [quantity, setQuantity] = useState("")
   const [selectedWarehouse, setSelectedWarehouse] = useState("")
   const [notes, setNotes] = useState("")
+  const [stockError, setStockError] = useState<string | null>(null)
 
   if (!product) {
     notFound()
   }
 
   const stockByWarehouse = getStockByWarehouse(id)
+
+  const availableInWarehouse = selectedWarehouse
+    ? (stockByWarehouse.find(s => s.warehouseId === selectedWarehouse)?.quantity ?? 0)
+    : null
   const statusConfig = stockStatusConfig[product.stockStatus ?? "in_stock"]
   const productMovements = movements.filter((m) => (m.productId ?? m.product_id) === id).slice(0, 5)
 
@@ -167,11 +172,40 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     setQuantity("")
     setSelectedWarehouse("")
     setNotes("")
+    setStockError(null)
     setAdjustDialogOpen(true)
   }
 
+  const handleWarehouseChange = (warehouseId: string) => {
+    setSelectedWarehouse(warehouseId)
+    setStockError(null)
+    // Re-validate quantity against new warehouse when switching
+    if (adjustType === "out" && quantity) {
+      const available = stockByWarehouse.find(s => s.warehouseId === warehouseId)?.quantity ?? 0
+      const qty = parseInt(quantity)
+      if (!isNaN(qty) && qty > available) {
+        setStockError(`Stock insuficiente — hay ${available} unidad${available !== 1 ? "es" : ""} disponible${available !== 1 ? "s" : ""}`)
+      }
+    }
+  }
+
+  const handleQuantityChange = (value: string) => {
+    setQuantity(value)
+    if (adjustType === "out" && selectedWarehouse && value) {
+      const qty = parseInt(value)
+      const available = availableInWarehouse ?? 0
+      if (!isNaN(qty) && qty > available) {
+        setStockError(`Stock insuficiente — hay ${available} unidad${available !== 1 ? "es" : ""} disponible${available !== 1 ? "s" : ""}`)
+      } else {
+        setStockError(null)
+      }
+    } else {
+      setStockError(null)
+    }
+  }
+
   const handleAdjust = () => {
-    if (!selectedWarehouse || !quantity) return
+    if (!selectedWarehouse || !quantity || stockError) return
     adjustStock(product.id, selectedWarehouse, parseInt(quantity), adjustType, notes || undefined)
     setAdjustDialogOpen(false)
     showSuccess(`${adjustType === "in" ? "Entrada" : "Salida"} de ${quantity} unidades registrada`)
@@ -567,18 +601,54 @@ const showSuccess = (message: string) => {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label>Depósito</Label>
-              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+              <Select value={selectedWarehouse} onValueChange={handleWarehouseChange}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar depósito" /></SelectTrigger>
                 <SelectContent>
-                  {warehouses.filter(w => w.isActive).map(warehouse => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</SelectItem>
-                  ))}
+                  {warehouses.filter(w => w.isActive).map(warehouse => {
+                    const stock = stockByWarehouse.find(s => s.warehouseId === warehouse.id)?.quantity ?? 0
+                    return (
+                      <SelectItem
+                        key={warehouse.id}
+                        value={warehouse.id}
+                        disabled={adjustType === "out" && stock === 0}
+                      >
+                        <span>{warehouse.name}</span>
+                        <span className="ml-2 text-muted-foreground text-xs">
+                          ({stock} {stock === 1 ? "unidad" : "unidades"})
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
+              {selectedWarehouse && availableInWarehouse !== null && (
+                <p className={cn(
+                  "text-xs",
+                  adjustType === "out" && availableInWarehouse === 0
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                )}>
+                  {adjustType === "out"
+                    ? availableInWarehouse === 0
+                      ? "Sin stock disponible en este depósito"
+                      : `Disponible: ${availableInWarehouse} unidad${availableInWarehouse !== 1 ? "es" : ""}`
+                    : `Stock actual: ${availableInWarehouse} unidad${availableInWarehouse !== 1 ? "es" : ""}`
+                  }
+                </p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label>Cantidad</Label>
-              <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              <Input
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => handleQuantityChange(e.target.value)}
+                className={stockError ? "border-destructive focus-visible:ring-destructive" : ""}
+              />
+              {stockError && (
+                <p className="text-xs text-destructive">{stockError}</p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label>Notas (opcional)</Label>
@@ -587,7 +657,12 @@ const showSuccess = (message: string) => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAdjustDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAdjust} disabled={!selectedWarehouse || !quantity}>Confirmar</Button>
+            <Button
+              onClick={handleAdjust}
+              disabled={!selectedWarehouse || !quantity || !!stockError || (adjustType === "out" && availableInWarehouse === 0)}
+            >
+              Confirmar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
