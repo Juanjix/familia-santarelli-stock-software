@@ -43,14 +43,26 @@ function rankProducts(products: Product[], query: string): Product[] {
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
+const DEFAULT_PLACEHOLDER = "Buscar por nombre, SKU o código de barras..."
+
 interface ProductSearchComboboxProps {
-  /** Candidate products to search through (pre-filtered by caller if needed). */
+  /** Candidate products to search through. Pre-filter by the caller when needed
+   *  (e.g. only products with stock in a specific warehouse). */
   products: Product[]
   selectedProductId: string
   onSelect: (productId: string) => void
-  /** Returns the available stock for a given product — shown in each result row. */
-  getStockInWarehouse?: (productId: string) => number
+  /** Optional: returns a stock count displayed next to each result row.
+   *  Omit entirely when stock is not relevant to the context. */
+  getStock?: (productId: string) => number
   disabled?: boolean
+  /** Placeholder shown in the trigger button and the search input. */
+  placeholder?: string
+  /** Placeholder shown in the trigger button when the component is disabled.
+   *  Use to explain *why* it is disabled ("Select a source warehouse first", etc.). */
+  disabledPlaceholder?: string
+  /** Message shown when the products list is empty before the user types anything.
+   *  Customise per-module ("No products in this warehouse", "No products", etc.). */
+  emptyMessage?: string
   className?: string
 }
 
@@ -60,23 +72,26 @@ export function ProductSearchCombobox({
   products,
   selectedProductId,
   onSelect,
-  getStockInWarehouse,
+  getStock,
   disabled,
+  placeholder = DEFAULT_PLACEHOLDER,
+  disabledPlaceholder = "No disponible",
+  emptyMessage = "No hay productos disponibles.",
   className,
 }: ProductSearchComboboxProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
 
-  // Debounce — 150 ms keeps the list snappy while avoiding excessive filtering
+  // Debounce — 150 ms keeps the list snappy while avoiding excessive filtering.
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 150)
     return () => clearTimeout(t)
   }, [query])
 
   // Scanner support: exact barcode match → auto-select without user interaction.
-  // A barcode reader types quickly and ends with Enter; the debounce settles
-  // before Enter fires, so this effect reliably catches the full code.
+  // A barcode reader types the full code quickly; the debounce settles before
+  // the reader sends Enter, so this effect reliably catches the complete code.
   useEffect(() => {
     if (!debouncedQuery || !open) return
     const match = products.find(p => p.barcode && p.barcode === debouncedQuery)
@@ -107,8 +122,6 @@ export function ProductSearchCombobox({
     if (!next) setQuery("")
   }
 
-  const noProductsAtAll = products.length === 0
-
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
@@ -130,9 +143,7 @@ export function ProductSearchCombobox({
             </span>
           ) : (
             <span className="truncate">
-              {disabled
-                ? "Seleccioná un origen primero"
-                : "Buscar por nombre, SKU o código de barras..."}
+              {disabled ? disabledPlaceholder : placeholder}
             </span>
           )}
         </Button>
@@ -145,15 +156,15 @@ export function ProductSearchCombobox({
       >
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Buscar por nombre, SKU o código de barras..."
+            placeholder={placeholder}
             value={query}
             onValueChange={setQuery}
           />
           <CommandList>
-            {noProductsAtAll ? (
+            {products.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
                 <Package className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                <p>Sin stock en este depósito.</p>
+                <p>{emptyMessage}</p>
               </div>
             ) : (
               <>
@@ -163,7 +174,7 @@ export function ProductSearchCombobox({
                 </CommandEmpty>
                 <CommandGroup>
                   {filtered.map(p => {
-                    const stock = getStockInWarehouse?.(p.id)
+                    const stock = getStock?.(p.id)
                     const isSelected = p.id === selectedProductId
                     return (
                       <CommandItem

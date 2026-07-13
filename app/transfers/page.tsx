@@ -258,8 +258,10 @@ function NewTransferPanel({
                       products={productsInOrigin}
                       selectedProductId={line.productId}
                       onSelect={v => updateLine(idx, "productId", v)}
-                      getStockInWarehouse={getAvailableQty}
+                      getStock={getAvailableQty}
                       disabled={!fromWarehouse}
+                      disabledPlaceholder="Seleccioná un origen primero"
+                      emptyMessage="Sin stock en este depósito."
                     />
                   </div>
                   <Input
