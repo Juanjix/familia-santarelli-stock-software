@@ -51,6 +51,8 @@ export default function InventoryPage() {
   const [transferResult, setTransferResult] = useState<"success" | "error" | null>(null)
   const [quantityError, setQuantityError] = useState<string | null>(null)
 
+  // ── Filtered list ─────────────────────────────────────────────────────────────
+
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -64,19 +66,74 @@ export default function InventoryPage() {
     })
   }, [products, search, warehouseFilter, getStockByWarehouse])
 
-  const adjustProduct = selectedProduct && adjustDialog.productId
+  // ── Adjust dialog derived state ────────────────────────────────────────────
+  // Resolved directly from dialog state — no dependency on selectedProduct.
+
+  const adjustDialogProduct = adjustDialog.productId
+    ? products.find(p => p.id === adjustDialog.productId) ?? null
+    : null
+
+  const adjustProductStock = adjustDialog.productId
     ? getStockByWarehouse(adjustDialog.productId) || []
     : []
 
   const adjustWarehouseStock = selectedWarehouse
-    ? (adjustProduct.find(s => s.warehouseId === selectedWarehouse)?.quantity ?? 0)
+    ? (adjustProductStock.find(s => s.warehouseId === selectedWarehouse)?.quantity ?? 0)
     : null
+
+  // ── Transfer dialog derived state ──────────────────────────────────────────
+
+  const transferProduct = transferDialog.productId
+    ? products.find(p => p.id === transferDialog.productId) ?? null
+    : null
+
+  const transferProductStock = transferProduct ? getStockByWarehouse(transferProduct.id) || [] : []
+
+  const fromStockAvailable = fromWarehouse
+    ? (transferProductStock.find(s => s.warehouseId === fromWarehouse)?.quantity ?? 0)
+    : 0
+
+  const toStockCurrent = toWarehouse
+    ? (transferProductStock.find(s => s.warehouseId === toWarehouse)?.quantity ?? 0)
+    : 0
+
+  const parsedQty = parseInt(quantity) || 0
+  const isQtyValid = parsedQty > 0 && parsedQty <= fromStockAvailable && !quantity.includes(".")
+  const canTransfer = !!fromWarehouse && !!toWarehouse && isQtyValid && !saving && transferResult !== "success"
+  const showSummary = fromWarehouse && toWarehouse && isQtyValid
+
+  // ── Form reset ─────────────────────────────────────────────────────────────
+
+  const resetForm = () => {
+    setQuantity("")
+    setSelectedWarehouse("")
+    setFromWarehouse("")
+    setToWarehouse("")
+    setNotes("")
+    setSaving(false)
+    setTransferResult(null)
+    setQuantityError(null)
+  }
+
+  // ── Dialog openers ─────────────────────────────────────────────────────────
+
+  const openAdjustDialog = (productId: string, type: "in" | "out" | "adjustment") => {
+    resetForm()
+    setAdjustDialog({ open: true, productId, type })
+  }
+
+  const openTransferDialog = (productId: string) => {
+    resetForm()
+    setTransferDialog({ open: true, productId })
+  }
+
+  // ── Adjust handlers ────────────────────────────────────────────────────────
 
   const handleAdjustWarehouseChange = (val: string) => {
     setSelectedWarehouse(val)
     setQuantityError(null)
     if (adjustDialog.type === "out" && quantity) {
-      const stock = adjustProduct.find(s => s.warehouseId === val)?.quantity ?? 0
+      const stock = adjustProductStock.find(s => s.warehouseId === val)?.quantity ?? 0
       const n = parseInt(quantity)
       if (!isNaN(n) && n > stock) {
         setQuantityError(`Stock insuficiente — hay ${stock} unidad${stock !== 1 ? "es" : ""} disponible${stock !== 1 ? "s" : ""}`)
@@ -106,6 +163,34 @@ export default function InventoryPage() {
     resetForm()
   }
 
+  // ── Transfer handlers ──────────────────────────────────────────────────────
+
+  const handleFromWarehouseChange = (val: string) => {
+    setFromWarehouse(val)
+    setQuantityError(null)
+    if (quantity) {
+      const stock = transferProductStock.find(s => s.warehouseId === val)?.quantity ?? 0
+      const n = parseInt(quantity)
+      if (n > stock) {
+        setQuantityError(`Stock insuficiente. Disponible en origen: ${stock} unidad${stock !== 1 ? "es" : ""}.`)
+      }
+    }
+    if (toWarehouse === val) setToWarehouse("")
+  }
+
+  const handleQuantityChange = (val: string) => {
+    setQuantity(val)
+    setQuantityError(null)
+    const n = parseInt(val)
+    if (val && val.includes(".")) {
+      setQuantityError("La cantidad debe ser un número entero.")
+    } else if (n <= 0) {
+      setQuantityError("La cantidad debe ser mayor a 0.")
+    } else if (fromWarehouse && n > fromStockAvailable) {
+      setQuantityError(`Stock insuficiente. Disponible en origen: ${fromStockAvailable} unidad${fromStockAvailable !== 1 ? "es" : ""}.`)
+    }
+  }
+
   const handleTransfer = async () => {
     if (!transferDialog.productId || !fromWarehouse || !toWarehouse) return
     const qty = parseInt(quantity)
@@ -130,76 +215,6 @@ export default function InventoryPage() {
       setSaving(false)
     }
   }
-
-  const resetForm = () => {
-    setQuantity("")
-    setSelectedWarehouse("")
-    setFromWarehouse("")
-    setToWarehouse("")
-    setNotes("")
-    setSaving(false)
-    setTransferResult(null)
-    setQuantityError(null)
-  }
-
-  const openAdjustDialog = (productId: string, type: "in" | "out" | "adjustment") => {
-    setAdjustDialog({ open: true, productId, type })
-  }
-
-  const openTransferDialog = (productId: string) => {
-    resetForm()
-    setTransferDialog({ open: true, productId })
-  }
-
-  const selectedProduct = adjustDialog.productId
-    ? products.find(p => p.id === adjustDialog.productId)
-    : transferDialog.productId
-    ? products.find(p => p.id === transferDialog.productId)
-    : null
-
-  // Transfer dialog derived state
-  const transferProduct = transferDialog.productId ? products.find(p => p.id === transferDialog.productId) : null
-  const transferProductStock = transferProduct ? getStockByWarehouse(transferProduct.id) || [] : []
-
-  const fromStockEntry = fromWarehouse ? transferProductStock.find(s => s.warehouseId === fromWarehouse) : null
-  const fromStockAvailable = fromStockEntry?.quantity ?? 0
-
-  const toStockEntry = toWarehouse ? transferProductStock.find(s => s.warehouseId === toWarehouse) : null
-  const toStockCurrent = toStockEntry?.quantity ?? 0
-
-  const parsedQty = parseInt(quantity) || 0
-  const isQtyValid = parsedQty > 0 && parsedQty <= fromStockAvailable && !quantity.includes(".")
-  const canTransfer = !!fromWarehouse && !!toWarehouse && isQtyValid && !saving && transferResult !== "success"
-
-  const handleQuantityChange = (val: string) => {
-    setQuantity(val)
-    setQuantityError(null)
-    const n = parseInt(val)
-    if (val && val.includes(".")) {
-      setQuantityError("La cantidad debe ser un número entero.")
-    } else if (n <= 0) {
-      setQuantityError("La cantidad debe ser mayor a 0.")
-    } else if (fromWarehouse && n > fromStockAvailable) {
-      setQuantityError(`Stock insuficiente. Disponible en origen: ${fromStockAvailable} unidad${fromStockAvailable !== 1 ? "es" : ""}.`)
-    }
-  }
-
-  const handleFromWarehouseChange = (val: string) => {
-    setFromWarehouse(val)
-    setQuantityError(null)
-    // Re-validate quantity against new origin stock
-    if (quantity) {
-      const stock = transferProductStock.find(s => s.warehouseId === val)?.quantity ?? 0
-      const n = parseInt(quantity)
-      if (n > stock) {
-        setQuantityError(`Stock insuficiente. Disponible en origen: ${stock} unidad${stock !== 1 ? "es" : ""}.`)
-      }
-    }
-    // Clear destination if same as new origin
-    if (toWarehouse === val) setToWarehouse("")
-  }
-
-  const showSummary = fromWarehouse && toWarehouse && isQtyValid
 
   return (
     <div className="flex flex-col h-full">
@@ -414,7 +429,7 @@ export default function InventoryPage() {
               {adjustDialog.type === "in" ? "Entrada de Stock" : adjustDialog.type === "out" ? "Salida de Stock" : "Ajuste de Stock"}
             </DialogTitle>
             <DialogDescription>
-              {selectedProduct?.name}
+              {adjustDialogProduct?.name}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
