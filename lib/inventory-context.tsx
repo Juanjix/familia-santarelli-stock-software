@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/lib/auth-context"
 import type { Product, Warehouse, Movement, StockByWarehouse, Coupon, Supplier, Category, Brand, CategoryAttribute, Customer, Jeweler, WorkerType, Employee, EnvelopeSubtype, Envelope, EnvelopeStatus, EnvelopeStatusLog, EnvelopeEvent, QuoteStatus, StockTransfer, StockTransferItem, StockTransferEvent } from "./types"
+import { validateConditionNotes } from "@/lib/schemas/envelope"
 
 // Helper to normalize product for UI
 function normalizeProduct(p: Product & { suppliers?: Supplier | null }): Product {
@@ -771,6 +772,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, [supabase])
 
   const createEnvelope = useCallback(async (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'received_by_employee' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id' | 'pending_transfer_to_warehouse_id' | 'pending_transfer_sent_by' | 'pending_transfer_sent_at'>): Promise<Envelope | null> => {
+    const conditionError = validateConditionNotes(data.product_condition, data.product_condition_notes)
+    if (conditionError) { console.error("createEnvelope validation:", conditionError); return null }
     const insertData = { ...data, number: '', current_warehouse_id: data.received_warehouse_id }
     const { data: created, error } = await supabase.from("envelopes").insert(insertData).select(ENVELOPE_SELECT).single()
     if (error) { console.error("Error creating envelope:", error); return null }

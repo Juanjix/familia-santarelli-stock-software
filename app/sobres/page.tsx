@@ -59,6 +59,7 @@ import {
   MapPin,
 } from "lucide-react"
 import type { Envelope, EnvelopeStatus, EnvelopeEvent, QuoteStatus, Employee, Jeweler, WorkerType } from "@/lib/types"
+import { validateConditionNotes } from "@/lib/schemas/envelope"
 
 // ── Status helpers ──────────────────────────────────────────────────────────
 
@@ -553,6 +554,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
   const [form, setForm] = useState<WizardState>(defaultWizard)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [conditionError, setConditionError] = useState<string | null>(null)
 
   const STEPS: WizardStep[] = ["customer", "product", "work", "confirm"]
   const set = (key: keyof WizardState, value: unknown) => setForm(prev => ({ ...prev, [key]: value }))
@@ -562,6 +564,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
       setStep("customer")
       setForm({ ...defaultWizard, warehouseId: warehouses.find(w => w.is_active)?.id || "" })
       setError(null)
+      setConditionError(null)
     }
   }, [open, warehouses])
 
@@ -794,7 +797,13 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
 
             <div className="grid gap-1.5">
               <Label>Estado del artículo <span className="text-destructive">*</span></Label>
-              <Select value={form.productCondition} onValueChange={(v) => set("productCondition", v as "very_good" | "good" | "regular")}>
+              <Select
+                value={form.productCondition}
+                onValueChange={(v) => {
+                  set("productCondition", v as "very_good" | "good" | "regular")
+                  if (v !== "regular") setConditionError(null)
+                }}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="very_good">Muy bueno</SelectItem>
@@ -805,8 +814,29 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
             </div>
 
             <div className="grid gap-1.5">
-              <Label>Observaciones del estado <span className="text-xs text-muted-foreground">(Opcional)</span></Label>
-              <Input value={form.productConditionNotes} onChange={e => set("productConditionNotes", e.target.value)} placeholder="Ej: Rayado en la parte trasera" />
+              <Label>
+                Observación / Estado del producto
+                {form.productCondition === "regular"
+                  ? <span className="text-destructive ml-0.5">*</span>
+                  : <span className="text-xs text-muted-foreground ml-1">(Opcional)</span>}
+              </Label>
+              <Input
+                value={form.productConditionNotes}
+                onChange={e => {
+                  set("productConditionNotes", e.target.value)
+                  if (conditionError) setConditionError(null)
+                }}
+                placeholder="Ej: Rayado en la parte trasera"
+                className={conditionError ? "border-destructive focus-visible:ring-destructive" : ""}
+              />
+              {form.productCondition === "regular" && !conditionError && (
+                <p className="text-xs text-muted-foreground">
+                  Describí el estado actual del producto para dejar constancia de su condición.
+                </p>
+              )}
+              {conditionError && (
+                <p className="text-xs text-destructive">{conditionError}</p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -938,7 +968,14 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           {step !== "confirm" ? (
             <Button
-              onClick={() => setStep(STEPS[STEPS.indexOf(step) + 1])}
+              onClick={() => {
+                if (step === "product") {
+                  const err = validateConditionNotes(form.productCondition, form.productConditionNotes)
+                  if (err) { setConditionError(err); return }
+                  setConditionError(null)
+                }
+                setStep(STEPS[STEPS.indexOf(step) + 1])
+              }}
               disabled={
                 (step === "customer" && !canAdvanceCustomer()) ||
                 (step === "work" && !canAdvanceWork())
