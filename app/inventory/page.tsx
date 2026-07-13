@@ -441,7 +441,7 @@ export default function InventoryPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {warehouses.filter(w => w.isActive).map(warehouse => {
-                    const stock = adjustProduct.find(s => s.warehouseId === warehouse.id)?.quantity ?? 0
+                    const stock = adjustProductStock.find(s => s.warehouseId === warehouse.id)?.quantity ?? 0
                     const disableOnOut = adjustDialog.type === "out" && stock === 0
                     return (
                       <SelectItem key={warehouse.id} value={warehouse.id} disabled={disableOnOut}>
