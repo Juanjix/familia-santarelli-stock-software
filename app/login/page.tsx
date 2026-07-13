@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,9 +20,9 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router       = useRouter()
-  const searchParams = useSearchParams()
-  const supabase     = createClient()
+  const searchParams      = useSearchParams()
+  const supabase          = createClient()
+  const { reBootstrap }   = useAuth()
 
   const [view, setView]             = useState<View>("login")
   const [email, setEmail]           = useState("")
@@ -36,20 +37,33 @@ function LoginForm() {
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) {
+    if (authError) {
       setError(
-        error.message === "Invalid login credentials"
+        authError.message === "Invalid login credentials"
           ? "Email o contraseña incorrectos"
-          : error.message
+          : authError.message
       )
       setLoading(false)
       return
     }
 
-    const redirect = searchParams.get("redirect") ?? "/"
-    router.push(redirect)
+    // Log the session server-side — this is a deliberate login action.
+    supabase.from("session_logs").insert({
+      action:     "login",
+      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    }).then(() => {})
+
+    // Hydrate auth state via the server action.
+    // AuthNavigator detects authenticated+isAuthRoute and handles the redirect.
+    const provisioned = await reBootstrap()
+    if (!provisioned) {
+      // Auth succeeded but the user has no app_users profile.
+      // AuthProvider already set accountNotProvisioned — nothing else needed.
+      setLoading(false)
+    }
+    // On success: spinner keeps showing, AuthNavigator redirects to searchParams.redirect ?? "/"
   }
 
   const handleForgot = async (e: React.FormEvent) => {

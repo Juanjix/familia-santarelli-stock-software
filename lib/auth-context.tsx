@@ -38,6 +38,7 @@ interface AuthContextType {
   signOut:        () => Promise<void>
   refreshUser:    () => Promise<void>
   dismissExpired: () => void
+  reBootstrap:    () => Promise<boolean>
 }
 
 const DEFAULT_PERM: ModulePermission = {
@@ -46,12 +47,10 @@ const DEFAULT_PERM: ModulePermission = {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Profile loader ────────────────────────────────────────────────────────────
+// Always goes through the Server Action — the middleware has already refreshed
+// the token server-side, so this never triggers a client-side token refresh.
 
-// All profile loading goes through the Server Action.
-// Client-side Supabase RPC calls to get_current_user_profile hang in some
-// network conditions; the server action runs co-located with Supabase and
-// always resolves fast because the middleware already refreshed the token.
 async function loadProfile(): Promise<AppUser | null> {
   try {
     return await getBootstrapSession()
@@ -69,109 +68,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase            = supabaseRef.current
   const signingOutRef       = useRef(false)
   const wasAuthenticatedRef = useRef(false)
-  // Guards against SIGNED_IN from onAuthStateChange racing with the bootstrap.
-  // SIGNED_IN is ignored until bootstrap completes; afterwards it handles
-  // fresh logins and token refreshes that re-authenticate.
-  const bootstrapDoneRef    = useRef(false)
 
   const user = authState.status === "authenticated" ? authState.user : null
 
+  // ── Core bootstrap ──────────────────────────────────────────────────────────
+  // Reads the session server-side and hydrates auth state.
+  // Safe to call from any "loading" state; respects state changes that may
+  // have occurred during the async call (e.g. SIGNED_OUT firing mid-flight).
+
+  const doBootstrap = useCallback(async (): Promise<AppUser | null> => {
+    const profile = await loadProfile()
+    setAuthState(prev => {
+      // If an extraordinary event (SIGNED_OUT) changed state while we were
+      // loading, don't overwrite it.
+      if (prev.status !== "checking" && prev.status !== "loadingProfile") return prev
+      if (profile) {
+        wasAuthenticatedRef.current = true
+        return { status: "authenticated", user: profile }
+      }
+      return { status: "unauthenticated" }
+    })
+    return profile
+  }, [])
+
   useEffect(() => {
-    let cancelled = false
+    // Initial bootstrap — runs once on mount.
+    doBootstrap()
 
-    // Bootstrap via Server Action.
-    // The middleware refreshes the access token on every request, so by the
-    // time this runs the cookies are guaranteed to be fresh.
-    const timeoutId = setTimeout(() => {
-      if (!cancelled) {
-        bootstrapDoneRef.current = true
-        setAuthState({ status: "unauthenticated" })
+    // Listener only for extraordinary events.
+    // Token refresh and login are handled by bootstrap/reBootstrap — not here.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        const wasActive = wasAuthenticatedRef.current
+        wasAuthenticatedRef.current = false
+        if (signingOutRef.current) return
+        setAuthState(wasActive ? { status: "sessionExpired" } : { status: "unauthenticated" })
       }
-    }, 10_000)
+    })
 
-    ;(async () => {
-      try {
-        const profile = await loadProfile()
-        if (cancelled) return
-        if (profile) {
-          wasAuthenticatedRef.current = true
-          setAuthState({ status: "authenticated", user: profile })
-        } else {
-          setAuthState({ status: "unauthenticated" })
-        }
-      } catch {
-        if (!cancelled) setAuthState({ status: "unauthenticated" })
-      } finally {
-        bootstrapDoneRef.current = true
-        clearTimeout(timeoutId)
-      }
-    })()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // INITIAL_SESSION is redundant — bootstrap handles the initial state.
-        if (event === "INITIAL_SESSION") return
-
-        if (event === "SIGNED_IN" && session) {
-          // While bootstrap is running it will handle the state; ignore here
-          // to avoid two simultaneous profile-loading calls.
-          if (!bootstrapDoneRef.current) return
-
-          signingOutRef.current = false
-          setAuthState({ status: "loadingProfile" })
-          const profile = await loadProfile()
-          if (cancelled) return
-          if (profile) {
-            wasAuthenticatedRef.current = true
-            setAuthState({ status: "authenticated", user: profile })
-          } else {
-            setAuthState({ status: "accountNotProvisioned" })
-          }
-          // Fire-and-forget — does not affect auth state.
-          supabase.from("session_logs").insert({
-            action:     "login",
-            user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-          }).then(() => {})
-          return
-        }
-
-        if (event === "SIGNED_OUT") {
-          const wasActive = wasAuthenticatedRef.current
-          wasAuthenticatedRef.current = false
-          if (signingOutRef.current) return
-          setAuthState(wasActive ? { status: "sessionExpired" } : { status: "unauthenticated" })
-          return
-        }
-
-        // TOKEN_REFRESHED keeps the user authenticated; no profile re-fetch needed.
-        if (event === "TOKEN_REFRESHED" && session) {
-          // Touch last_seen without changing auth state.
-          setAuthState(prev => {
-            if (prev.status === "authenticated") {
-              supabase
-                .from("app_users")
-                .update({ last_seen_at: new Date().toISOString() })
-                .eq("id", prev.user.id)
-                .then(() => {})
-            }
-            return prev
-          })
-        }
-      }
-    )
-
-    return () => {
-      cancelled = true
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const perm = useCallback(
-    (module: string): ModulePermission =>
-      user?.permissions?.[module] ?? DEFAULT_PERM,
-    [user]
-  )
+  // ── reBootstrap ─────────────────────────────────────────────────────────────
+  // Called by the login page after signInWithPassword() succeeds.
+  // Returns true if a profile was loaded (user is provisioned), false otherwise.
+  // AuthNavigator handles the redirect once state becomes "authenticated".
+
+  const reBootstrap = useCallback(async (): Promise<boolean> => {
+    setAuthState({ status: "loadingProfile" })
+    const profile = await doBootstrap()
+    return !!profile
+  }, [doBootstrap])
+
+  // ── Sign out ────────────────────────────────────────────────────────────────
 
   const signOut = useCallback(async () => {
     signingOutRef.current = true
@@ -190,10 +140,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthState({ status: "redirecting" })
   }, [])
 
+  // Silent refresh — does not show a loading state.
   const refreshUser = useCallback(async () => {
     const profile = await loadProfile()
     if (profile) setAuthState({ status: "authenticated", user: profile })
   }, [])
+
+  const perm = useCallback(
+    (module: string): ModulePermission =>
+      user?.permissions?.[module] ?? DEFAULT_PERM,
+    [user]
+  )
 
   return (
     <AuthContext.Provider value={{
@@ -207,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshUser,
       dismissExpired,
+      reBootstrap,
     }}>
       {children}
     </AuthContext.Provider>
