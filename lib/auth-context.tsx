@@ -28,15 +28,15 @@ export type AuthState =
 // ── Context interface ─────────────────────────────────────────────────────────
 
 interface AuthContextType {
-  authState:   AuthState
-  user:        AppUser | null
-  canView:     (module: string) => boolean
-  canCreate:   (module: string) => boolean
-  canEdit:     (module: string) => boolean
-  canDelete:   (module: string) => boolean
-  perm:        (module: string) => ModulePermission
-  signOut:     () => Promise<void>
-  refreshUser: () => Promise<void>
+  authState:      AuthState
+  user:           AppUser | null
+  canView:        (module: string) => boolean
+  canCreate:      (module: string) => boolean
+  canEdit:        (module: string) => boolean
+  canDelete:      (module: string) => boolean
+  perm:           (module: string) => ModulePermission
+  signOut:        () => Promise<void>
+  refreshUser:    () => Promise<void>
   dismissExpired: () => void
 }
 
@@ -45,6 +45,20 @@ const DEFAULT_PERM: ModulePermission = {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// All profile loading goes through the Server Action.
+// Client-side Supabase RPC calls to get_current_user_profile hang in some
+// network conditions; the server action runs co-located with Supabase and
+// always resolves fast because the middleware already refreshed the token.
+async function loadProfile(): Promise<AppUser | null> {
+  try {
+    return await getBootstrapSession()
+  } catch {
+    return null
+  }
+}
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
@@ -57,32 +71,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const wasAuthenticatedRef = useRef(false)
   // Guards against SIGNED_IN from onAuthStateChange racing with the bootstrap.
   // SIGNED_IN is ignored until bootstrap completes; afterwards it handles
-  // fresh logins (post-submit) and token refreshes that re-authenticate.
+  // fresh logins and token refreshes that re-authenticate.
   const bootstrapDoneRef    = useRef(false)
 
   const user = authState.status === "authenticated" ? authState.user : null
-
-  const fetchProfile = useCallback(async (): Promise<AppUser | null> => {
-    const { data, error } = await supabase.rpc("get_current_user_profile")
-    if (error || !data) return null
-    return data as AppUser
-  }, [supabase])
-
-  const updateLastSeen = useCallback(async (appUserId: string) => {
-    await supabase
-      .from("app_users")
-      .update({ last_seen_at: new Date().toISOString() })
-      .eq("id", appUserId)
-  }, [supabase])
 
   useEffect(() => {
     let cancelled = false
 
     // Bootstrap via Server Action.
-    // The middleware refreshes the token server-side on every request, so by
-    // the time this runs the cookies are guaranteed to be fresh — no
-    // client-side token-refresh round-trip needed (those can hang indefinitely
-    // when the Supabase auth service has latency issues).
+    // The middleware refreshes the access token on every request, so by the
+    // time this runs the cookies are guaranteed to be fresh.
     const timeoutId = setTimeout(() => {
       if (!cancelled) {
         bootstrapDoneRef.current = true
@@ -92,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     ;(async () => {
       try {
-        const profile = await getBootstrapSession()
+        const profile = await loadProfile()
         if (cancelled) return
         if (profile) {
           wasAuthenticatedRef.current = true
@@ -110,23 +109,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // INITIAL_SESSION is redundant — bootstrap handles the initial state.
         if (event === "INITIAL_SESSION") return
 
         if (event === "SIGNED_IN" && session) {
+          // While bootstrap is running it will handle the state; ignore here
+          // to avoid two simultaneous profile-loading calls.
           if (!bootstrapDoneRef.current) return
+
           signingOutRef.current = false
           setAuthState({ status: "loadingProfile" })
-          try {
-            const profile = await fetchProfile()
-            if (profile) {
-              wasAuthenticatedRef.current = true
-              setAuthState({ status: "authenticated", user: profile })
-            } else {
-              setAuthState({ status: "accountNotProvisioned" })
-            }
-          } catch {
+          const profile = await loadProfile()
+          if (cancelled) return
+          if (profile) {
+            wasAuthenticatedRef.current = true
+            setAuthState({ status: "authenticated", user: profile })
+          } else {
             setAuthState({ status: "accountNotProvisioned" })
           }
+          // Fire-and-forget — does not affect auth state.
           supabase.from("session_logs").insert({
             action:     "login",
             user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
@@ -142,9 +143,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        // TOKEN_REFRESHED keeps the user authenticated; no profile re-fetch needed.
         if (event === "TOKEN_REFRESHED" && session) {
+          // Touch last_seen without changing auth state.
           setAuthState(prev => {
-            if (prev.status === "authenticated") updateLastSeen(prev.user.id)
+            if (prev.status === "authenticated") {
+              supabase
+                .from("app_users")
+                .update({ last_seen_at: new Date().toISOString() })
+                .eq("id", prev.user.id)
+                .then(() => {})
+            }
             return prev
           })
         }
@@ -182,9 +191,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refreshUser = useCallback(async () => {
-    const profile = await fetchProfile()
+    const profile = await loadProfile()
     if (profile) setAuthState({ status: "authenticated", user: profile })
-  }, [fetchProfile])
+  }, [])
 
   return (
     <AuthContext.Provider value={{
