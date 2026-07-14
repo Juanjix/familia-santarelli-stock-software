@@ -132,7 +132,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
   // ── Carrito ────────────────────────────────────────────────────────────────
 
   const addOrIncrementProduct = useCallback((product: Product, price?: number) => {
-    const unitPrice = price ?? product.price ?? 0
+    const unitPrice = price ?? product.sell_price ?? 0
     setItems(prev => {
       const existing = prev.find(i => i.product_id === product.id)
       if (existing) {

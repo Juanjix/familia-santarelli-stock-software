@@ -19,6 +19,7 @@ import {
   TruckIcon,
   Users,
   LogOut,
+  ShoppingCart,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -26,6 +27,7 @@ import { useAuth } from "@/lib/auth-context"
 
 const navOperacion = [
   { name: "Panel",           href: "/",         icon: LayoutDashboard, module: "dashboard" },
+  { name: "Punto de Venta",  href: "/pos",      icon: ShoppingCart,    module: "pos" },
   { name: "Escanear",        href: "/scan",      icon: ScanLine,        module: "scan" },
   { name: "Productos",       href: "/products",  icon: Package,         module: "products" },
   { name: "Inventario",      href: "/inventory", icon: Boxes,           module: "inventory" },
