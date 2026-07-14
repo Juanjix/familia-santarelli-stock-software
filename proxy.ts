@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -29,9 +29,9 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/reset-password")
 
   // Sin sesión y ruta protegida → redirigir a login.
-  // No redirigimos session+/login→/ desde el middleware: esa lógica la maneja
+  // No redirigimos session+/login→/ desde el proxy: esa lógica la maneja
   // el cliente (AppShell), evitando el loop cuando el browser client no puede
-  // leer las mismas cookies httpOnly que el middleware.
+  // leer las mismas cookies httpOnly que el proxy.
   if (!session && !isAuthRoute) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"

@@ -20,8 +20,11 @@ export const metadata: Metadata = {
   authors: [{ name: 'Familia Santarelli' }],
   robots: { index: false, follow: false },
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-icon.png',
+    icon: [
+      { url: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+      { url: '/icon.png',    sizes: '512x512', type: 'image/png' },
+    ],
+    apple: { url: '/apple-icon.png', sizes: '180x180' },
   },
   openGraph: {
     type: 'website',
