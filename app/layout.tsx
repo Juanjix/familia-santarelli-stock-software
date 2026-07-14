@@ -11,8 +11,38 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Familia Santarelli - Sistema de Stock',
-  description: 'Sistema de gestión de inventario para joyería',
+  title: {
+    default: 'Santarelli — Sistema de Stock',
+    template: '%s | Santarelli',
+  },
+  description: 'Sistema de gestión de inventario para Familia Santarelli.',
+  applicationName: 'Santarelli Stock',
+  authors: [{ name: 'Familia Santarelli' }],
+  robots: { index: false, follow: false },
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-icon.png',
+  },
+  openGraph: {
+    type: 'website',
+    siteName: 'Santarelli',
+    title: 'Santarelli — Sistema de Stock',
+    description: 'Sistema de gestión de inventario para Familia Santarelli.',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Santarelli — Sistema de Stock',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Santarelli — Sistema de Stock',
+    description: 'Sistema de gestión de inventario para Familia Santarelli.',
+    images: ['/og-image.png'],
+  },
 }
 
 export default function RootLayout({
