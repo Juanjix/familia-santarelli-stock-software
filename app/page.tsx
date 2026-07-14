@@ -7,7 +7,7 @@ import { StatCard } from "@/components/dashboard/stat-card"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Package, Boxes, DollarSign, AlertTriangle, ArrowDownRight, ArrowUpRight, ArrowLeftRight, Wrench } from "lucide-react"
+import { Package, Boxes, DollarSign, AlertTriangle, ArrowDownRight, ArrowUpRight, ArrowLeftRight, Wrench, ShoppingCart } from "lucide-react"
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(value)
@@ -22,6 +22,8 @@ const movementIcons = {
   exit: ArrowUpRight,
   transfer: ArrowLeftRight,
   adjustment: Wrench,
+  sale: ShoppingCart,
+  sale_reversal: ShoppingCart,
 }
 
 const movementColors = {
@@ -29,6 +31,8 @@ const movementColors = {
   exit: "text-red-500",
   transfer: "text-primary",
   adjustment: "text-yellow-500",
+  sale: "text-red-500",
+  sale_reversal: "text-green-500",
 }
 
 // Client-side only relative time to avoid hydration mismatch

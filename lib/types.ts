@@ -75,6 +75,7 @@ export interface Employee {
   id: string
   name: string
   is_active: boolean
+  commission_pct: number | null
   created_at: string
   updated_at: string
 }
@@ -280,7 +281,7 @@ export interface Movement {
   product_id: string
   warehouse_id: string | null
   to_warehouse_id: string | null
-  type: "entry" | "exit" | "transfer" | "adjustment"
+  type: "entry" | "exit" | "transfer" | "adjustment" | "sale" | "sale_reversal"
   quantity: number
   reason: string | null
   user_name: string
@@ -416,4 +417,125 @@ export interface Database {
       }
     }
   }
+}
+
+// ── Módulo POS ─────────────────────────────────────────────
+
+export type SaleStatus = 'draft' | 'confirmed' | 'voided'
+export type PaymentMethod = 'cash' | 'transfer' | 'card' | 'other'
+export type ExchangeTicketStatus = 'active' | 'used' | 'voided' | 'expired'
+export type CommissionStatus = 'pending' | 'paid' | 'voided'
+
+export interface ProductSnapshot {
+  name: string
+  sku: string
+  barcode: string | null
+}
+
+export interface Sale {
+  id: string
+  sale_number: number
+  status: SaleStatus
+  warehouse_id: string
+  seller_id: string
+  customer_id: string | null
+  subtotal_amount: number
+  discount_amount: number
+  total_amount: number
+  notes: string | null
+  confirmed_at: string | null
+  voided_at: string | null
+  voided_by: string | null
+  void_reason: string | null
+  created_at: string
+  updated_at: string
+  // Joined
+  seller?: Employee
+  customer?: POSCustomer
+  items?: SaleItem[]
+  payments?: SalePayment[]
+  exchange_ticket?: ExchangeTicket
+}
+
+export interface SaleItem {
+  id: string
+  sale_id: string
+  product_id: string
+  quantity: number
+  unit_price: number
+  discount_pct: number
+  line_total: number
+  product_snapshot: ProductSnapshot
+  created_at: string
+  // Joined
+  product?: Product
+}
+
+export interface SalePayment {
+  id: string
+  sale_id: string
+  method: PaymentMethod
+  amount: number
+  reference: string | null
+  created_at: string
+}
+
+export interface ExchangeTicket {
+  id: string
+  ticket_number: string
+  sale_id: string
+  status: ExchangeTicketStatus
+  credit_amount: number
+  valid_until: string
+  used_at: string | null
+  created_at: string
+}
+
+export interface SaleCommission {
+  id: string
+  sale_id: string
+  employee_id: string
+  commission_pct: number
+  commission_amount: number
+  basis_amount: number
+  status: CommissionStatus
+  created_at: string
+  updated_at: string
+  // Joined
+  employee?: Employee
+}
+
+// Cliente para POS — misma tabla customers pero DNI opcional
+export interface POSCustomer {
+  id: string
+  first_name: string
+  last_name: string
+  dni: string | null
+  phone: string | null
+  address: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Estado local del carrito (pre-confirmación)
+export interface CartItem {
+  product_id: string
+  product: Product
+  quantity: number
+  unit_price: number
+  discount_pct: number
+}
+
+export interface CartPayment {
+  method: PaymentMethod
+  amount: number
+  reference: string
+}
+
+export interface ConfirmSaleResult {
+  ok: boolean
+  sale_number?: number
+  ticket_number?: string
+  error_code?: string
+  error_detail?: string
 }

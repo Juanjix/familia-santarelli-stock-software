@@ -40,6 +40,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Wrench,
+  ShoppingCart,
   Plus,
   Minus,
   CheckCircle2,
@@ -90,6 +91,8 @@ const movementIcons = {
   exit: ArrowUpRight,
   transfer: ArrowLeftRight,
   adjustment: Wrench,
+  sale: ShoppingCart,
+  sale_reversal: ShoppingCart,
 }
 
 const movementColors = {
@@ -97,6 +100,8 @@ const movementColors = {
   exit: "text-red-500",
   transfer: "text-primary",
   adjustment: "text-yellow-500",
+  sale: "text-red-500",
+  sale_reversal: "text-green-500",
 }
 
 function formatCurrency(value: number): string {
