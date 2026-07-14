@@ -18,6 +18,7 @@ import {
   X,
   History,
   Printer,
+  CircleDollarSign,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -410,10 +411,16 @@ export default function POSPage() {
             <ShoppingCart className="h-5 w-5 text-muted-foreground" />
             <span className="font-semibold text-sm">Punto de Venta</span>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/sales")} className="text-xs text-muted-foreground">
-            <History className="h-3.5 w-3.5 mr-1.5" />
-            Historial
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/commissions")} className="text-xs text-muted-foreground">
+              <CircleDollarSign className="h-3.5 w-3.5 mr-1.5" />
+              Comisiones
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/sales")} className="text-xs text-muted-foreground">
+              <History className="h-3.5 w-3.5 mr-1.5" />
+              Historial
+            </Button>
+          </div>
         </div>
 
         {/* Vendedor / Depósito */}
