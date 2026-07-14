@@ -17,6 +17,7 @@ import {
   UserPlus,
   X,
   History,
+  Printer,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -57,13 +58,103 @@ function fmtARS(n: number) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
 }
 
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+}
+
+// ── Impresión del ticket de canje desde el POS ────────────────────────────────
+
+interface PrintTicketData {
+  ticketNumber: string
+  saleNumber: number
+  total: number
+  customerName: string | null
+  customerPhone: string | null
+  items: { name: string; sku: string; quantity: number; lineTotal: number }[]
+  validUntil: string  // ISO date string (30 días desde hoy)
+}
+
+function printPOSTicket(data: PrintTicketData) {
+  const itemsHtml = data.items.map(it =>
+    `<div class="row"><span class="label">${escHtml(it.name)}</span><span class="value">×${it.quantity} ${fmtARS(it.lineTotal)}</span></div>`
+  ).join("")
+
+  const html = `<!DOCTYPE html><html><head>
+    <meta charset="UTF-8"><title>Ticket ${escHtml(data.ticketNumber)}</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      @page { size: 105mm 148mm; margin: 0; }
+      body { font-family: Arial, sans-serif; font-size: 9pt; color: #111; }
+      .ticket { width: 100mm; min-height: 136mm; padding: 3mm 4mm; display: flex; flex-direction: column; gap: 1.2mm; }
+      .header { text-align: center; }
+      .brand { font-size: 12pt; font-weight: bold; letter-spacing: 0.3px; }
+      .subtitle { font-size: 11pt; font-weight: bold; margin-top: 0.5mm; letter-spacing: 0.3px; }
+      .ticket-number { font-family: monospace; font-size: 14pt; font-weight: bold; text-align: center; letter-spacing: 1px; margin: 1mm 0 1.5mm; padding: 0.8mm 0; border: 1px solid #000; border-radius: 1mm; }
+      .divider { border-top: 0.5px solid #bbb; margin: 0.5mm 0; }
+      .section-title { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.3px; color: #777; font-weight: bold; margin-bottom: 0.6mm; }
+      .row { display: flex; gap: 2mm; align-items: baseline; margin-bottom: 0.3mm; }
+      .label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.2px; color: #666; min-width: 28mm; flex-shrink: 0; }
+      .value { font-size: 9pt; font-weight: 600; word-break: break-word; }
+      .total-row { display: flex; justify-content: space-between; font-size: 11pt; font-weight: bold; margin-top: 1mm; border-top: 0.7px solid #000; padding-top: 1mm; }
+      .signature { margin-top: auto; padding-top: 2mm; text-align: center; }
+      .signature-line { border-top: 0.7px solid #000; margin: 0 8mm; }
+      .signature-label { font-size: 7pt; color: #555; margin-top: 0.8mm; }
+    </style>
+    </head><body>
+    <div class="ticket">
+      <div class="header">
+        <div class="brand">FAMILIA SANTARELLI</div>
+        <div class="subtitle">TICKET DE CAMBIO</div>
+      </div>
+      <div class="ticket-number">${escHtml(data.ticketNumber)}</div>
+
+      <div class="section">
+        <div class="section-title">Cliente</div>
+        <div class="row"><span class="label">Nombre</span><span class="value">${escHtml(data.customerName ?? "—")}</span></div>
+        <div class="row"><span class="label">Teléfono</span><span class="value">${escHtml(data.customerPhone ?? "—")}</span></div>
+      </div>
+      <div class="divider"></div>
+
+      <div class="section">
+        <div class="section-title">Productos</div>
+        ${itemsHtml}
+        <div class="total-row"><span>TOTAL</span><span>${fmtARS(data.total)}</span></div>
+      </div>
+      <div class="divider"></div>
+
+      <div class="section">
+        <div class="row"><span class="label">Nro. de venta</span><span class="value">V-${String(data.saleNumber).padStart(4, "0")}</span></div>
+        <div class="row"><span class="label">Fecha emisión</span><span class="value">${fmtDate(new Date().toISOString())}</span></div>
+        <div class="row"><span class="label">Válido hasta</span><span class="value">${fmtDate(data.validUntil)}</span></div>
+      </div>
+
+      <div class="signature">
+        <div class="signature-line"></div>
+        <div class="signature-label">Firma del cliente</div>
+      </div>
+    </div>
+    <script>window.print();</script>
+    </body></html>`
+
+  const win = window.open("", "_blank")
+  if (!win) { alert("Habilitá los popups para imprimir el ticket."); return }
+  win.document.write(html)
+  win.document.close()
+}
+
+function escHtml(s: string) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")
+}
+
 // ── Success screen ─────────────────────────────────────────────────────────────
 
 function SuccessScreen({
   result,
+  printData,
   onNewSale,
 }: {
   result: ConfirmSaleResult & { ok: true; sale_number: number; ticket_number: string }
+  printData: PrintTicketData
   onNewSale: () => void
 }) {
   const router = useRouter()
@@ -86,6 +177,15 @@ function SuccessScreen({
         <p className="text-3xl font-mono font-semibold text-primary">{result.ticket_number}</p>
         <p className="text-xs text-muted-foreground mt-2">Válido por 30 días</p>
       </div>
+
+      <Button
+        variant="outline"
+        className="w-full max-w-sm gap-2"
+        onClick={() => printPOSTicket(printData)}
+      >
+        <Printer className="h-4 w-4" />
+        Imprimir ticket
+      </Button>
 
       <div className="flex gap-3 w-full max-w-sm">
         <Button variant="outline" className="flex-1" onClick={() => router.push("/pos/sales")}>
@@ -235,6 +335,7 @@ export default function POSPage() {
   const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [successResult, setSuccessResult] = useState<(ConfirmSaleResult & { ok: true; sale_number: number; ticket_number: string }) | null>(null)
+  const [successPrintData, setSuccessPrintData] = useState<PrintTicketData | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -262,6 +363,21 @@ export default function POSPage() {
     const result = await confirmSale(sellerId, warehouseId)
     setConfirming(false)
     if (result.ok) {
+      const validUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      setSuccessPrintData({
+        ticketNumber: (result as { ticket_number: string }).ticket_number,
+        saleNumber: (result as { sale_number: number }).sale_number,
+        total,
+        customerName: customerObj ? `${customerObj.first_name} ${customerObj.last_name}` : null,
+        customerPhone: customerObj?.phone ?? null,
+        items: items.map(it => ({
+          name: it.product.name,
+          sku: it.product.sku,
+          quantity: it.quantity,
+          lineTotal: it.quantity * it.unit_price * (1 - it.discount_pct / 100),
+        })),
+        validUntil,
+      })
       setSuccessResult(result as typeof successResult)
     } else {
       setConfirmError(result.error_detail ?? "Error al confirmar la venta.")
@@ -271,13 +387,14 @@ export default function POSPage() {
   function handleNewSale() {
     clearCart()
     setSuccessResult(null)
+    setSuccessPrintData(null)
     setConfirmError(null)
     setCustomerObj(null)
     setCustomerId(null)
   }
 
-  if (successResult) {
-    return <SuccessScreen result={successResult} onNewSale={handleNewSale} />
+  if (successResult && successPrintData) {
+    return <SuccessScreen result={successResult} printData={successPrintData} onNewSale={handleNewSale} />
   }
 
   const paymentMap = Object.fromEntries(payments.map(p => [p.method, p]))
