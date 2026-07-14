@@ -2,12 +2,16 @@
 --
 -- confirm_sale(p_sale_id) ejecuta en una sola transacción:
 --   1. Verifica stock disponible por ítem
---   2. Inserta movements tipo 'sale' (stock negativo)
---   3. Actualiza sales.status = 'confirmed'
---   4. Genera exchange_ticket con numeración TC-YYYYMMDD-NNNN
---   5. Registra comisión si el empleado tiene commission_pct configurado
+--   2. Inserta movements tipo 'sale' usando columnas reales: type, reason, warehouse_id
+--   3. Actualiza product_stock (descuenta unidades)
+--   4. Actualiza sales.status = 'confirmed'
+--   5. Genera exchange_ticket con numeración TC-YYYYMMDD-NNNN
+--   6. Registra comisión si el empleado tiene commission_pct configurado
 --
--- Devuelve: { ok: boolean, error_code: text, error_detail: text }
+-- Schema real de movements: type (no movement_type), reason (no notes),
+--   warehouse_id = origen, to_warehouse_id = destino (no from_warehouse_id)
+--
+-- Devuelve jsonb: { ok, error_code?, error_detail?, ticket_number?, sale_number? }
 
 CREATE OR REPLACE FUNCTION confirm_sale(p_sale_id UUID)
 RETURNS JSONB
@@ -21,6 +25,7 @@ DECLARE
   v_ticket_seq     INTEGER;
   v_ticket_number  TEXT;
   v_commission_pct NUMERIC(5,2);
+  v_seller_name    TEXT;
   v_today          DATE := CURRENT_DATE;
 BEGIN
   -- ── Bloquear la fila de la venta para evitar doble-confirmación ──────────
@@ -41,6 +46,8 @@ BEGIN
       'error_detail', 'La venta no tiene ítems.');
   END IF;
 
+  SELECT name INTO v_seller_name FROM employees WHERE id = v_sale.seller_id;
+
   -- ── Verificar stock por ítem ─────────────────────────────────────────────
   FOR v_item IN SELECT * FROM sale_items WHERE sale_id = p_sale_id LOOP
     SELECT COALESCE(quantity, 0) INTO v_current_stock
@@ -48,13 +55,13 @@ BEGIN
     WHERE product_id = v_item.product_id
       AND warehouse_id = v_sale.warehouse_id;
 
-    IF v_current_stock IS NULL OR v_current_stock < v_item.quantity THEN
+    IF COALESCE(v_current_stock, 0) < v_item.quantity THEN
       RETURN jsonb_build_object(
         'ok', false,
         'error_code', 'INSUFFICIENT_STOCK',
         'error_detail', format(
-          'Stock insuficiente para el producto %s. Disponible: %s, requerido: %s.',
-          (SELECT COALESCE(name, id::text) FROM products WHERE id = v_item.product_id),
+          'Stock insuficiente para "%s". Disponible: %s, requerido: %s.',
+          (v_item.product_snapshot->>'name'),
           COALESCE(v_current_stock, 0),
           v_item.quantity
         )
@@ -62,18 +69,24 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- ── Insertar movimientos de stock ────────────────────────────────────────
+  -- ── Descontar stock e insertar movimientos ───────────────────────────────
   FOR v_item IN SELECT * FROM sale_items WHERE sale_id = p_sale_id LOOP
-    INSERT INTO movements (
-      product_id, movement_type, quantity,
-      from_warehouse_id, notes, user_name, sale_id
-    ) VALUES (
+    -- Descontar stock
+    UPDATE product_stock
+    SET quantity   = quantity - v_item.quantity,
+        updated_at = now()
+    WHERE product_id = v_item.product_id
+      AND warehouse_id = v_sale.warehouse_id;
+
+    -- Registrar movimiento (columnas reales: type, reason, warehouse_id = origen)
+    INSERT INTO movements (product_id, type, quantity, warehouse_id, reason, user_name, sale_id)
+    VALUES (
       v_item.product_id,
       'sale',
-      -v_item.quantity,              -- negativo = salida de stock
+      v_item.quantity,
       v_sale.warehouse_id,
       format('Venta V-%s', LPAD(v_sale.sale_number::text, 4, '0')),
-      (SELECT name FROM employees WHERE id = v_sale.seller_id),
+      v_seller_name,
       p_sale_id
     );
   END LOOP;
@@ -98,7 +111,7 @@ BEGIN
     v_ticket_number,
     p_sale_id,
     v_sale.total_amount,
-    v_today + INTERVAL '30 days'   -- vigencia configurable a futuro
+    v_today + INTERVAL '30 days'
   );
 
   -- ── Registrar comisión si el empleado tiene porcentaje configurado ────────
@@ -133,7 +146,7 @@ END;
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Función complementaria: void_sale(p_sale_id, p_voided_by, p_reason)
+-- void_sale(p_sale_id, p_voided_by, p_reason)
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION void_sale(
   p_sale_id   UUID,
@@ -145,8 +158,9 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_sale  sales%ROWTYPE;
-  v_item  sale_items%ROWTYPE;
+  v_sale         sales%ROWTYPE;
+  v_item         sale_items%ROWTYPE;
+  v_voider_name  TEXT;
 BEGIN
   SELECT * INTO v_sale FROM sales WHERE id = p_sale_id FOR UPDATE;
 
@@ -160,39 +174,46 @@ BEGIN
       'error_detail', 'Solo se pueden anular ventas confirmadas.');
   END IF;
 
-  -- Insertar movimientos de reverso (stock positivo)
+  SELECT name INTO v_voider_name FROM employees WHERE id = p_voided_by;
+
+  -- Devolver stock e insertar movimientos de reverso
   FOR v_item IN SELECT * FROM sale_items WHERE sale_id = p_sale_id LOOP
-    INSERT INTO movements (
-      product_id, movement_type, quantity,
-      to_warehouse_id, notes, user_name, sale_id
-    ) VALUES (
+    UPDATE product_stock
+    SET quantity   = quantity + v_item.quantity,
+        updated_at = now()
+    WHERE product_id = v_item.product_id
+      AND warehouse_id = v_sale.warehouse_id;
+
+    -- Para reverso: to_warehouse_id = destino del stock (warehouse de la venta)
+    INSERT INTO movements (product_id, type, quantity, to_warehouse_id, reason, user_name, sale_id)
+    VALUES (
       v_item.product_id,
       'sale_reversal',
-      v_item.quantity,               -- positivo = ingreso de stock
+      v_item.quantity,
       v_sale.warehouse_id,
-      format('Anulación venta V-%s: %s', LPAD(v_sale.sale_number::text, 4, '0'), p_reason),
-      (SELECT name FROM employees WHERE id = p_voided_by),
+      format('Anulación V-%s: %s', LPAD(v_sale.sale_number::text, 4, '0'), p_reason),
+      v_voider_name,
       p_sale_id
     );
   END LOOP;
 
-  -- Anular ticket de canje (si está activo)
+  -- Anular ticket de canje si está activo
   UPDATE exchange_tickets
   SET status = 'voided'
   WHERE sale_id = p_sale_id AND status = 'active';
 
-  -- Anular comisión
+  -- Anular comisión pendiente
   UPDATE sale_commissions
   SET status = 'voided', updated_at = now()
   WHERE sale_id = p_sale_id AND status = 'pending';
 
   -- Marcar venta como anulada
   UPDATE sales
-  SET status = 'voided',
-      voided_at = now(),
-      voided_by = p_voided_by,
+  SET status      = 'voided',
+      voided_at   = now(),
+      voided_by   = p_voided_by,
       void_reason = p_reason,
-      updated_at = now()
+      updated_at  = now()
   WHERE id = p_sale_id;
 
   RETURN jsonb_build_object('ok', true);

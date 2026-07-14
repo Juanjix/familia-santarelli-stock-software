@@ -13,11 +13,13 @@ ALTER TABLE customers ALTER COLUMN dni DROP NOT NULL;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS commission_pct NUMERIC(5,2)
   CHECK (commission_pct IS NULL OR (commission_pct >= 0 AND commission_pct <= 100));
 
--- Extender movement_type para incluir tipos generados por ventas.
--- Requiere DROP + RE-ADD del constraint.
+-- Extender la columna "type" de movements para incluir tipos de ventas.
+-- El nombre real en DB es "type" (no movement_type).
+-- Dropeamos con IF EXISTS cualquier variante del nombre del constraint.
+ALTER TABLE movements DROP CONSTRAINT IF EXISTS movements_type_check;
 ALTER TABLE movements DROP CONSTRAINT IF EXISTS movements_movement_type_check;
-ALTER TABLE movements ADD CONSTRAINT movements_movement_type_check
-  CHECK (movement_type IN ('entry', 'exit', 'transfer', 'adjustment', 'sale', 'sale_reversal'));
+ALTER TABLE movements ADD CONSTRAINT movements_type_check
+  CHECK (type IN ('entry', 'exit', 'transfer', 'adjustment', 'sale', 'sale_reversal'));
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. sales — cabecera de cada venta
