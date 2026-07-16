@@ -470,6 +470,8 @@ export default function POSPage() {
   const [successPrintData, setSuccessPrintData] = useState<PrintTicketData | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
 
+  const hasPriceZero = items.some(it => it.unit_price === 0)
+
   useEffect(() => {
     Promise.all([fetchEmployees(), fetchWarehouses()]).then(([emps, whs]) => {
       setEmployees(emps)
@@ -825,7 +827,7 @@ export default function POSPage() {
         <div className="mt-auto p-4">
           <Button
             className="w-full h-11 text-sm font-semibold gap-2"
-            disabled={isCartEmpty || !isPaymentComplete || !sellerId || !warehouseId || confirming}
+            disabled={isCartEmpty || !isPaymentComplete || !sellerId || !warehouseId || confirming || hasPriceZero}
             onClick={handleConfirm}
           >
             {confirming
@@ -833,7 +835,12 @@ export default function POSPage() {
               : <><Check className="h-4 w-4" />Confirmar venta<ChevronRight className="h-4 w-4 ml-auto" /></>
             }
           </Button>
-          {!isPaymentComplete && !isCartEmpty && (
+          {hasPriceZero && !isCartEmpty && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
+              Hay ítems con precio $0. Corregí los precios para confirmar.
+            </p>
+          )}
+          {!isPaymentComplete && !isCartEmpty && !hasPriceZero && (
             <p className="text-xs text-muted-foreground text-center mt-2">
               Falta ingresar {fmtARS(Math.max(0, total - paymentTotal))} en métodos de pago.
             </p>

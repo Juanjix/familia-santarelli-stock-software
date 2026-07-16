@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useState,
+  useRef,
   useCallback,
   useMemo,
   type ReactNode,
@@ -194,11 +195,31 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
   // ── Confirmación de venta ──────────────────────────────────────────────────
 
+  // Ref-based lock: prevents concurrent confirmSale calls even if state batching
+  // delays the re-render that would disable the button.
+  const confirmingRef = useRef(false)
+
   const confirmSale = useCallback(async (
     sellerId: string,
     warehouseId: string,
   ): Promise<ConfirmSaleResult> => {
+    if (confirmingRef.current) {
+      return { ok: false, error_code: "ALREADY_CONFIRMING", error_detail: "Ya hay una confirmación en curso." }
+    }
+    confirmingRef.current = true
+
+    try {
     const supabase = getSupabase()
+
+    // Client-side $0 guard — avoids creating a draft that the RPC will reject anyway.
+    const zeroPriceItem = items.find(it => it.unit_price === 0)
+    if (zeroPriceItem) {
+      return {
+        ok: false,
+        error_code: "ZERO_PRICE",
+        error_detail: `"${zeroPriceItem.product.name}" tiene precio $0. Corregilo antes de confirmar.`,
+      }
+    }
 
     // 1. Crear la cabecera de la venta en estado draft
     const { data: sale, error: saleErr } = await supabase
@@ -273,6 +294,9 @@ export function POSProvider({ children }: { children: ReactNode }) {
       ok: true,
       sale_number: sale.sale_number,
       ticket_number: result.ticket_number,
+    }
+    } finally {
+      confirmingRef.current = false
     }
   }, [items, payments, subtotal, discountAmount, total, notes, customerId])
 
