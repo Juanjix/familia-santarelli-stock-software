@@ -465,6 +465,8 @@ export default function POSPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [sellerId, setSellerId] = useState("")
   const [warehouseId, setWarehouseId] = useState("")
+  const [dataLoaded, setDataLoaded] = useState(false)
+  const [sessionReady, setSessionReady] = useState(false)
   const [customerObj, setCustomerObj] = useState<POSCustomer | null>(null)
   const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -475,19 +477,47 @@ export default function POSPage() {
 
   const hasPriceZero = items.some(it => it.unit_price === 0)
 
-  // Restore seller/warehouse from localStorage; fall back to first available
+  // Restore seller/warehouse from localStorage; auto-resolve from user account when possible.
+  // Only auto-selects without asking when: value is persisted, user is linked to an employee,
+  // or there is only one option — otherwise shows the setup screen.
   useEffect(() => {
     Promise.all([fetchEmployees(), fetchWarehouses()]).then(([emps, whs]) => {
       setEmployees(emps)
       setWarehouses(whs)
-      const savedSeller = localStorage.getItem("pos:sellerId")
+
+      const savedSeller    = localStorage.getItem("pos:sellerId")
       const savedWarehouse = localStorage.getItem("pos:warehouseId")
-      if (savedSeller && emps.find(e => e.id === savedSeller)) setSellerId(savedSeller)
-      else if (emps.length > 0) setSellerId(emps[0].id)
-      if (savedWarehouse && whs.find(w => w.id === savedWarehouse)) setWarehouseId(savedWarehouse)
-      else if (whs.length > 0) setWarehouseId(whs[0].id)
+      let sellerResolved   = false
+      let warehouseResolved = false
+
+      // Seller: localStorage → user.employee_id → only if single employee
+      if (savedSeller && emps.find(e => e.id === savedSeller)) {
+        setSellerId(savedSeller)
+        sellerResolved = true
+      } else if (user?.employee_id && emps.find(e => e.id === user.employee_id)) {
+        setSellerId(user.employee_id)
+        localStorage.setItem("pos:sellerId", user.employee_id)
+        sellerResolved = true
+      } else if (emps.length === 1) {
+        setSellerId(emps[0].id)
+        localStorage.setItem("pos:sellerId", emps[0].id)
+        sellerResolved = true
+      }
+
+      // Warehouse: localStorage → only if single warehouse
+      if (savedWarehouse && whs.find(w => w.id === savedWarehouse)) {
+        setWarehouseId(savedWarehouse)
+        warehouseResolved = true
+      } else if (whs.length === 1) {
+        setWarehouseId(whs[0].id)
+        localStorage.setItem("pos:warehouseId", whs[0].id)
+        warehouseResolved = true
+      }
+
+      setDataLoaded(true)
+      if (sellerResolved && warehouseResolved) setSessionReady(true)
     })
-  }, [fetchEmployees, fetchWarehouses])
+  }, [fetchEmployees, fetchWarehouses, user?.employee_id])
 
   // Auto-clear undo hint after 5 s
   useEffect(() => {
@@ -607,6 +637,74 @@ export default function POSPage() {
     return <SuccessScreen result={successResult} printData={successPrintData} onNewSale={handleNewSale} />
   }
 
+  // Setup screen — shown when seller or warehouse couldn't be auto-resolved
+  if (dataLoaded && !sessionReady) {
+    const sellerName = employees.find(e => e.id === sellerId)?.name
+    const warehouseName = warehouses.find(w => w.id === warehouseId)?.name
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="w-full max-w-sm space-y-6">
+          <div>
+            <h2 className="text-lg font-semibold">Preparar punto de venta</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Confirmá quién atiende y desde qué local para comenzar.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">¿Quién está atendiendo?</Label>
+              {sellerName && employees.length === 1 ? (
+                <div className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground">
+                  {sellerName}
+                </div>
+              ) : (
+                <Select value={sellerId} onValueChange={id => { setSellerId(id); localStorage.setItem("pos:sellerId", id) }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccioná un vendedor..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map(e => (
+                      <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">¿Desde qué local?</Label>
+              {warehouseName && warehouses.length === 1 ? (
+                <div className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground">
+                  {warehouseName}
+                </div>
+              ) : (
+                <Select value={warehouseId} onValueChange={id => { setWarehouseId(id); localStorage.setItem("pos:warehouseId", id) }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccioná un depósito..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {warehouses.map(w => (
+                      <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+          <Button
+            className="w-full"
+            disabled={!sellerId || !warehouseId}
+            onClick={() => setSessionReady(true)}
+          >
+            Comenzar a vender
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   const paymentMap = Object.fromEntries(payments.map(p => [p.method, p]))
 
   return (
@@ -614,13 +712,25 @@ export default function POSPage() {
       {/* ── Panel izquierdo: búsqueda + carrito ─────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 border-r overflow-hidden">
 
-        {/* Header */}
+        {/* Header con contexto de sesión */}
         <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5 text-muted-foreground" />
-            <span className="font-semibold text-sm">Punto de Venta</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <ShoppingCart className="h-5 w-5 text-muted-foreground shrink-0" />
+            <span className="font-semibold text-sm shrink-0">Punto de Venta</span>
+            <span className="text-muted-foreground/50 shrink-0">·</span>
+            <span className="text-xs text-muted-foreground truncate">
+              {employees.find(e => e.id === sellerId)?.name}
+              {" · "}
+              {warehouses.find(w => w.id === warehouseId)?.name}
+            </span>
+            <button
+              className="shrink-0 text-[11px] text-muted-foreground/60 hover:text-muted-foreground underline underline-offset-2 transition-colors"
+              onClick={() => setSessionReady(false)}
+            >
+              cambiar
+            </button>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/commissions")} className="text-xs text-muted-foreground">
               <CircleDollarSign className="h-3.5 w-3.5 mr-1.5" />
               Comisiones
@@ -629,36 +739,6 @@ export default function POSPage() {
               <History className="h-3.5 w-3.5 mr-1.5" />
               Historial
             </Button>
-          </div>
-        </div>
-
-        {/* Vendedor / Depósito */}
-        <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b shrink-0 bg-muted/30">
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Vendedor</Label>
-            <Select value={sellerId} onValueChange={id => { setSellerId(id); localStorage.setItem("pos:sellerId", id) }}>
-              <SelectTrigger className={cn("h-8 text-xs", !sellerId && "border-amber-500/60")}>
-                <SelectValue placeholder="Seleccioná..." />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map(e => (
-                  <SelectItem key={e.id} value={e.id} className="text-xs">{e.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Depósito</Label>
-            <Select value={warehouseId} onValueChange={id => { setWarehouseId(id); localStorage.setItem("pos:warehouseId", id) }}>
-              <SelectTrigger className={cn("h-8 text-xs", !warehouseId && "border-amber-500/60")}>
-                <SelectValue placeholder="Seleccioná..." />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.map(w => (
-                  <SelectItem key={w.id} value={w.id} className="text-xs">{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -940,16 +1020,6 @@ export default function POSPage() {
             }
           </Button>
           {/* Mensajes de bloqueo — en orden de prioridad */}
-          {!isCartEmpty && !sellerId && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
-              Seleccioná un vendedor para continuar.
-            </p>
-          )}
-          {!isCartEmpty && sellerId && !warehouseId && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
-              Seleccioná un depósito para continuar.
-            </p>
-          )}
           {hasPriceZero && !isCartEmpty && (
             <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
               Hay ítems con precio $0. Corregí los precios para confirmar.

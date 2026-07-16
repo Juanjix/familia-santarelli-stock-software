@@ -25,21 +25,27 @@ import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
 
-const navOperacion = [
-  { name: "Panel",            href: "/",         icon: LayoutDashboard, module: "dashboard" },
-  { name: "Punto de Venta",   href: "/pos",      icon: ShoppingCart,    module: "pos" },
-  { name: "Escanear",         href: "/scan",     icon: ScanLine,        module: "scan" },
-  { name: "Productos",        href: "/products", icon: Package,         module: "products" },
-  { name: "Inventario",       href: "/inventory",icon: Boxes,           module: "inventory" },
-  { name: "Etiquetas",        href: "/labels",   icon: Tags,            module: "labels" },
-  { name: "Reparaciones",     href: "/sobres",   icon: Mail,            module: "sobres" },
-  { name: "Ticket de Canje",  href: "/coupons",  icon: Ticket,          module: "coupons" },
+const navPanel = [
+  { name: "Panel", href: "/", icon: LayoutDashboard, module: "dashboard" },
 ]
 
-const navGestion = [
-  { name: "Transferencias", href: "/transfers", icon: TruckIcon,       module: "transfers" },
-  { name: "Movimientos",    href: "/movements", icon: ArrowLeftRight,  module: "movements" },
-  { name: "Reportes",       href: "/reports",   icon: BarChart3,       module: "reports" },
+const navVentas = [
+  { name: "Punto de Venta",  href: "/pos",     icon: ShoppingCart, module: "pos" },
+  { name: "Reparaciones",    href: "/sobres",  icon: Mail,         module: "sobres" },
+  { name: "Ticket de Canje", href: "/coupons", icon: Ticket,       module: "coupons" },
+]
+
+const navStock = [
+  { name: "Productos",      href: "/products",  icon: Package,       module: "products" },
+  { name: "Inventario",     href: "/inventory", icon: Boxes,         module: "inventory" },
+  { name: "Etiquetas",      href: "/labels",    icon: Tags,          module: "labels" },
+  { name: "Escanear",       href: "/scan",      icon: ScanLine,      module: "scan" },
+  { name: "Transferencias", href: "/transfers", icon: TruckIcon,     module: "transfers" },
+]
+
+const navAnalisis = [
+  { name: "Movimientos", href: "/movements", icon: ArrowLeftRight, module: "movements" },
+  { name: "Reportes",    href: "/reports",   icon: BarChart3,      module: "reports" },
 ]
 
 const navConfiguracion = [
@@ -64,7 +70,7 @@ function NavGroup({
 
   return (
     <div className="space-y-0.5">
-      {!collapsed && (
+      {!collapsed && label && (
         <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           {label}
         </p>
@@ -130,9 +136,13 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-3">
-        <NavGroup items={navOperacion}     label="Operación"     pathname={pathname} collapsed={collapsed} />
+        <NavGroup items={navPanel}         label=""              pathname={pathname} collapsed={collapsed} />
         <div className="my-2 border-t border-sidebar-border" />
-        <NavGroup items={navGestion}       label="Gestión"       pathname={pathname} collapsed={collapsed} />
+        <NavGroup items={navVentas}        label="Ventas"        pathname={pathname} collapsed={collapsed} />
+        <div className="my-2 border-t border-sidebar-border" />
+        <NavGroup items={navStock}         label="Stock"         pathname={pathname} collapsed={collapsed} />
+        <div className="my-2 border-t border-sidebar-border" />
+        <NavGroup items={navAnalisis}      label="Análisis"      pathname={pathname} collapsed={collapsed} />
         <div className="my-2 border-t border-sidebar-border" />
         <NavGroup items={navConfiguracion} label="Configuración" pathname={pathname} collapsed={collapsed} />
       </nav>
