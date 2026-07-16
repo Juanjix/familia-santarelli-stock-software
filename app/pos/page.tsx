@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import {
   ShoppingCart,
@@ -319,7 +319,7 @@ export default function POSPage() {
     items, payments, discountAmount, customerId,
     subtotal, total, paymentTotal, change,
     isCartEmpty, isPaymentComplete,
-    addOrIncrementProduct, removeItem, updateItemQty, updateItemDiscount,
+    addOrIncrementProduct, removeItem, updateItemQty, updateItemPrice, updateItemDiscount,
     setDiscountAmount, setCustomerId, setPayment, removePayment,
     confirmSale, clearCart,
     fetchEmployees, fetchWarehouses, searchCustomers,
@@ -349,13 +349,20 @@ export default function POSPage() {
     })
   }, [fetchEmployees, fetchWarehouses])
 
-  // Productos activos con stock (el combobox muestra el stock via getStock)
-  const activeProducts = products.filter(p => p.is_active)
+  const activeProducts = useMemo(() => products.filter(p => p.is_active), [products])
 
-  function getStock(productId: string) {
-    const p = products.find(p => p.id === productId)
-    return p?.total_stock ?? 0
-  }
+  const getStock = useCallback(
+    (productId: string) => products.find(p => p.id === productId)?.total_stock ?? 0,
+    [products],
+  )
+
+  const handleAddProduct = useCallback(
+    (productId: string) => {
+      const p = products.find(p => p.id === productId)
+      if (p) addOrIncrementProduct(p)
+    },
+    [products, addOrIncrementProduct],
+  )
 
   async function handleConfirm() {
     if (!sellerId || !warehouseId || isCartEmpty || !isPaymentComplete) return
@@ -458,10 +465,7 @@ export default function POSPage() {
           <ProductSearchCombobox
             products={activeProducts}
             selectedProductId=""
-            onSelect={productId => {
-              const p = products.find(p => p.id === productId)
-              if (p) addOrIncrementProduct(p)
-            }}
+            onSelect={handleAddProduct}
             getStock={getStock}
             placeholder="Buscar o escanear producto..."
             emptyMessage="No hay productos activos."
@@ -479,67 +483,95 @@ export default function POSPage() {
             </div>
           ) : (
             <div className="space-y-2 py-2">
-              {items.map(item => (
-                <div
-                  key={item.product_id}
-                  className="flex gap-3 rounded-lg border bg-card p-3"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium leading-tight truncate">{item.product.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{item.product.sku}</p>
-                    <div className="flex items-center gap-3 mt-2">
-                      {/* Qty */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          className="h-6 w-6 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
-                          onClick={() => item.quantity > 1 ? updateItemQty(item.product_id, item.quantity - 1) : removeItem(item.product_id)}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <span className="w-7 text-center text-sm font-medium">{item.quantity}</span>
-                        <button
-                          className="h-6 w-6 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
-                          onClick={() => updateItemQty(item.product_id, item.quantity + 1)}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
+              {items.map(item => {
+                const lineTotal = item.quantity * item.unit_price * (1 - item.discount_pct / 100)
+                const hasNoPrice = item.unit_price === 0
+                return (
+                  <div
+                    key={item.product_id}
+                    className={cn(
+                      "rounded-lg border bg-card p-3",
+                      hasNoPrice && "border-amber-500/50 bg-amber-500/5"
+                    )}
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-tight truncate">{item.product.name}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{item.product.sku}</p>
+                        <div className="flex flex-wrap items-center gap-3 mt-2">
+                          {/* Qty */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              className="h-6 w-6 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                              onClick={() => item.quantity > 1 ? updateItemQty(item.product_id, item.quantity - 1) : removeItem(item.product_id)}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="w-7 text-center text-sm font-medium">{item.quantity}</span>
+                            <button
+                              className="h-6 w-6 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                              onClick={() => updateItemQty(item.product_id, item.quantity + 1)}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+                          {/* Precio unitario */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">$</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={item.unit_price || ""}
+                              onChange={e => updateItemPrice(item.product_id, Number(e.target.value))}
+                              placeholder="0"
+                              className={cn(
+                                "h-6 w-20 text-xs px-2",
+                                hasNoPrice && "border-amber-500 focus-visible:ring-amber-500"
+                              )}
+                            />
+                          </div>
+                          {/* Descuento */}
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={item.discount_pct || ""}
+                              onChange={e => updateItemDiscount(item.product_id, Number(e.target.value))}
+                              placeholder="0%"
+                              className="h-6 w-14 text-xs px-2"
+                            />
+                            <span className="text-xs text-muted-foreground">%</span>
+                          </div>
+                        </div>
                       </div>
-                      {/* Descuento */}
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-muted-foreground">Desc.</span>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={item.discount_pct || ""}
-                          onChange={e => updateItemDiscount(item.product_id, Number(e.target.value))}
-                          placeholder="0"
-                          className="h-6 w-14 text-xs px-2"
-                        />
-                        <span className="text-xs text-muted-foreground">%</span>
+                      <div className="flex flex-col items-end justify-between shrink-0">
+                        <button
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                          onClick={() => removeItem(item.product_id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                        <div className="text-right">
+                          <p className={cn("text-sm font-semibold", hasNoPrice && "text-amber-600 dark:text-amber-400")}>
+                            {fmtARS(lineTotal)}
+                          </p>
+                          {item.discount_pct > 0 && (
+                            <p className="text-xs text-muted-foreground line-through">
+                              {fmtARS(item.quantity * item.unit_price)}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end justify-between shrink-0">
-                    <button
-                      className="text-muted-foreground hover:text-destructive transition-colors"
-                      onClick={() => removeItem(item.product_id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold">
-                        {fmtARS(item.quantity * item.unit_price * (1 - item.discount_pct / 100))}
+                    {hasNoPrice && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                        Este producto no tiene precio configurado. Ingresalo antes de confirmar.
                       </p>
-                      {item.discount_pct > 0 && (
-                        <p className="text-xs text-muted-foreground line-through">
-                          {fmtARS(item.quantity * item.unit_price)}
-                        </p>
-                      )}
-                    </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
@@ -25,85 +25,77 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ScanLine, Package, Plus, Minus, ArrowLeftRight, AlertCircle, CheckCircle2 } from "lucide-react"
+import { ProductScannerInput, type ProductScannerInputHandle } from "@/components/products/product-scanner-input"
+import {
+  ScanLine,
+  Package,
+  Plus,
+  Minus,
+  ArrowLeftRight,
+  CheckCircle2,
+  Tag,
+  Hash,
+  Layers,
+  Warehouse,
+} from "lucide-react"
 import type { Product, StockByWarehouse } from "@/lib/types"
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type ActionType = "in" | "out" | "transfer"
+
+interface ActionState {
+  open: boolean
+  type: ActionType | null
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const fmtARS = (n: number) =>
+  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(n)
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function ScanPage() {
-  const { products, warehouses, getStockByWarehouse, adjustStock, transferStock, loading } = useInventory()
-  const [scanInput, setScanInput] = useState("")
+  const { products, warehouses, getStockByWarehouse, adjustStock, transferStock, loading } =
+    useInventory()
+
+  const scannerRef = useRef<ProductScannerInputHandle>(null)
+
   const [foundProduct, setFoundProduct] = useState<Product | null>(null)
   const [stockByWarehouse, setStockByWarehouse] = useState<StockByWarehouse[]>([])
-  const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
 
-  const [actionDialog, setActionDialog] = useState<{ 
-    open: boolean; 
-    type: "in" | "out" | "transfer" | null 
-  }>({ open: false, type: null })
+  const [actionDialog, setActionDialog] = useState<ActionState>({ open: false, type: null })
   const [quantity, setQuantity] = useState("1")
   const [selectedWarehouse, setSelectedWarehouse] = useState("")
   const [fromWarehouse, setFromWarehouse] = useState("")
   const [toWarehouse, setToWarehouse] = useState("")
   const [notes, setNotes] = useState("")
 
-  // Auto-focus on input
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+  const activeWarehouses = warehouses.filter(w => w.is_active !== false)
 
-  // Clear messages after timeout
+  // Auto-clear success banner after 3 s (consistent with the rest of the system).
   useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => setSuccess(null), 3000)
-      return () => clearTimeout(timer)
-    }
+    if (!success) return
+    const t = setTimeout(() => setSuccess(null), 3000)
+    return () => clearTimeout(t)
   }, [success])
 
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(null), 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [error])
+  // ── Handlers ─────────────────────────────────────────────────────────────
 
-  // Load stock by warehouse when product is found
-  useEffect(() => {
-    async function loadStock() {
-      if (foundProduct) {
-        const stock = await getStockByWarehouse(foundProduct.id)
-        setStockByWarehouse(stock)
-      } else {
-        setStockByWarehouse([])
-      }
-    }
-    loadStock()
-  }, [foundProduct, getStockByWarehouse])
-
-  const handleScan = (e: React.FormEvent) => {
-    e.preventDefault()
-    const code = scanInput.trim()
-    if (!code) return
-
-    // Search by barcode, SKU, or ID
-    const product = products.find(
-      p => p.barcode === code || p.sku.toLowerCase() === code.toLowerCase() || p.id === code
-    )
-
-    if (product) {
+  const handleResolve = useCallback(
+    async (product: Product) => {
       setFoundProduct(product)
-      setError(null)
-    } else {
-      setFoundProduct(null)
-      setError(`No se encontró ningún producto con el código: ${code}`)
-    }
+      setSuccess(null)
+      const stock = await getStockByWarehouse(product.id)
+      setStockByWarehouse(stock)
+    },
+    [getStockByWarehouse],
+  )
 
-    setScanInput("")
-    inputRef.current?.focus()
-  }
-
-  const resetForm = () => {
+  const resetDialog = () => {
     setQuantity("1")
     setSelectedWarehouse("")
     setFromWarehouse("")
@@ -111,265 +103,261 @@ export default function ScanPage() {
     setNotes("")
   }
 
+  const closeDialog = () => {
+    setActionDialog({ open: false, type: null })
+    resetDialog()
+    // Restore focus to the scanner input so the next scan doesn't need a manual click.
+    setTimeout(() => scannerRef.current?.focus(), 0)
+  }
+
   const handleAction = async () => {
     if (!foundProduct) return
-    
     setProcessing(true)
     try {
       if (actionDialog.type === "transfer") {
         if (!fromWarehouse || !toWarehouse || !quantity) return
-        await transferStock(foundProduct.id, fromWarehouse, toWarehouse, parseInt(quantity), notes || undefined)
-        setSuccess(`Transferencia de ${quantity} unidades realizada correctamente`)
+        await transferStock(
+          foundProduct.id,
+          fromWarehouse,
+          toWarehouse,
+          parseInt(quantity),
+          notes || undefined,
+        )
+        setSuccess(`Transferencia de ${quantity} ud. registrada`)
       } else if (actionDialog.type === "in" || actionDialog.type === "out") {
         if (!selectedWarehouse || !quantity) return
-        await adjustStock(foundProduct.id, selectedWarehouse, parseInt(quantity), actionDialog.type, notes || undefined)
-        setSuccess(`${actionDialog.type === "in" ? "Entrada" : "Salida"} de ${quantity} unidades registrada`)
+        await adjustStock(
+          foundProduct.id,
+          selectedWarehouse,
+          parseInt(quantity),
+          actionDialog.type,
+          notes || undefined,
+        )
+        setSuccess(
+          actionDialog.type === "in"
+            ? `Entrada de ${quantity} ud. registrada`
+            : `Salida de ${quantity} ud. registrada`,
+        )
       }
-
-      setActionDialog({ open: false, type: null })
-      resetForm()
-      
-      // Refresh product data
-      const updatedProduct = products.find(p => p.id === foundProduct.id)
-      if (updatedProduct) {
-        setFoundProduct(updatedProduct)
-        const stock = await getStockByWarehouse(foundProduct.id)
-        setStockByWarehouse(stock)
-      }
+      closeDialog()
+      // Refresh stock display
+      const updated = await getStockByWarehouse(foundProduct.id)
+      setStockByWarehouse(updated)
     } finally {
       setProcessing(false)
-      inputRef.current?.focus()
     }
   }
 
-  const activeWarehouses = warehouses.filter(w => w.is_active !== false)
+  // ── Loading ───────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="flex flex-col h-full">
-        <Header title="Escanear" />
-        <main className="flex-1 overflow-auto p-4 md:p-6">
-          <Card className="mb-4 md:mb-6">
-            <CardHeader className="pb-3">
-              <Skeleton className="h-6 w-40" />
-              <Skeleton className="h-4 w-64 mt-2" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-12 w-full" />
-            </CardContent>
-          </Card>
+        <Header title="Escáner" />
+        <main className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+          <Skeleton className="h-14 w-full rounded-lg" />
+          <Skeleton className="h-64 w-full rounded-lg" />
         </main>
       </div>
     )
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="flex flex-col h-full">
-      <Header title="Escanear" />
-      
-      <main className="flex-1 overflow-auto p-4 md:p-6">
-        {/* Scan Input */}
-        <Card className="mb-4 md:mb-6">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-              <ScanLine className="h-5 w-5" />
-              Escanear Producto
-            </CardTitle>
-            <CardDescription className="text-xs md:text-sm">
-              Escanee un código de barras o ingrese el SKU/código manualmente
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleScan} className="flex flex-col sm:flex-row gap-3">
-              <Input
-                ref={inputRef}
-                value={scanInput}
-                onChange={(e) => setScanInput(e.target.value)}
-                placeholder="Código de barras o SKU..."
-                className="flex-1 text-base md:text-lg h-11 md:h-12"
-                autoFocus
-              />
-              <Button type="submit" size="lg" className="h-11 md:h-12 w-full sm:w-auto">
-                Buscar
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+      <Header title="Escáner" />
 
-        {/* Status Messages */}
-        {error && (
-          <div className="mb-4 md:mb-6 flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 md:p-4 text-destructive text-sm">
-            <AlertCircle className="h-4 w-4 md:h-5 md:w-5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+      <main className="flex-1 overflow-auto p-4 md:p-6 space-y-4 md:space-y-6">
 
+        {/* Scanner input — always visible and focused */}
+        <ProductScannerInput
+          ref={scannerRef}
+          products={products}
+          onResolve={handleResolve}
+          onNotFound={() => setFoundProduct(null)}
+          placeholder="Escanear código de barras o ingresar SKU..."
+        />
+
+        {/* Success feedback */}
         {success && (
-          <div className="mb-4 md:mb-6 flex items-center gap-2 rounded-lg border border-green-500/50 bg-green-500/10 p-3 md:p-4 text-green-500 text-sm">
-            <CheckCircle2 className="h-4 w-4 md:h-5 md:w-5 shrink-0" />
-            <span>{success}</span>
+          <div className="flex items-center gap-2 rounded-lg border border-green-500/40 bg-green-500/8 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            {success}
           </div>
         )}
 
-        {/* Product Info */}
+        {/* Empty state */}
+        {!foundProduct && (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-20 text-center">
+            <ScanLine className="h-14 w-14 text-muted-foreground/30" />
+            <p className="mt-4 text-base font-medium text-muted-foreground">Esperando escaneo</p>
+            <p className="mt-1 text-sm text-muted-foreground/70">
+              Escaneá un código de barras o ingresá un SKU para ver el producto
+            </p>
+          </div>
+        )}
+
+        {/* Product detail */}
         {foundProduct && (
-          <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
+
+            {/* ── Info card ── */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="h-5 w-5" />
-                  Producto Encontrado
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-muted">
-                    <Package className="h-8 w-8 text-muted-foreground" />
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <Package className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base leading-tight">{foundProduct.name}</CardTitle>
+                      <CardDescription className="text-xs">
+                        {foundProduct.category}
+                        {foundProduct.material && ` · ${foundProduct.material}`}
+                      </CardDescription>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold">{foundProduct.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {foundProduct.category}{foundProduct.material && ` - ${foundProduct.material}`}
-                    </p>
-                  </div>
-                  <Badge
-                    variant={foundProduct.is_active !== false ? "default" : "secondary"}
-                  >
+                  <Badge variant={foundProduct.is_active !== false ? "default" : "secondary"}>
                     {foundProduct.is_active !== false ? "Activo" : "Inactivo"}
                   </Badge>
                 </div>
+              </CardHeader>
 
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">SKU:</span>
-                    <p className="font-mono font-medium">{foundProduct.sku}</p>
+              <CardContent className="space-y-4">
+                {/* Identifiers */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Hash className="h-3 w-3" /> SKU
+                    </div>
+                    <p className="font-mono text-sm font-medium">{foundProduct.sku}</p>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Código de Barras:</span>
-                    <p className="font-mono font-medium">{foundProduct.barcode || "-"}</p>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Tag className="h-3 w-3" /> Código de barras
+                    </div>
+                    <p className="font-mono text-sm font-medium">{foundProduct.barcode || "—"}</p>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Precio:</span>
-                    <p className="font-medium">
-                      {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(foundProduct.sell_price || foundProduct.price || 0)}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      Precio de venta
+                    </div>
+                    <p className="text-sm font-semibold">
+                      {fmtARS(foundProduct.sell_price || foundProduct.price || 0)}
                     </p>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Stock Total:</span>
-                    <p className="font-medium">{foundProduct.total_stock || 0} unidades</p>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      Stock total
+                    </div>
+                    <p className="text-sm font-semibold">{foundProduct.total_stock ?? 0} ud.</p>
                   </div>
                 </div>
 
-                <div>
-                  <span className="text-sm text-muted-foreground">Stock por Depósito:</span>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {stockByWarehouse.length > 0 ? (
-                      stockByWarehouse.map(stock => (
-                        <Badge key={stock.warehouseId} variant="outline">
-                          {stock.warehouseName}: {stock.quantity}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-sm text-muted-foreground">Sin stock</span>
-                    )}
+                {/* Stock by warehouse */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Warehouse className="h-3 w-3" /> Stock por depósito
                   </div>
+                  {stockByWarehouse.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {stockByWarehouse.map(s => (
+                        <div
+                          key={s.warehouseId}
+                          className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm"
+                        >
+                          <span className="text-muted-foreground">{s.warehouseName}</span>
+                          <span className={s.quantity === 0 ? "text-destructive font-medium" : "font-medium"}>
+                            {s.quantity} ud.
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Sin stock registrado</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Quick Actions */}
+            {/* ── Quick actions card ── */}
             <Card>
-              <CardHeader>
-                <CardTitle>Acciones Rápidas</CardTitle>
-                <CardDescription>
-                  Realice operaciones de inventario sobre este producto
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Acciones rápidas</CardTitle>
+                <CardDescription className="text-xs">
+                  Operaciones de inventario sobre este producto
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3">
+              <CardContent className="grid gap-2.5">
                 <Button
-                  size="lg"
-                  className="h-14 md:h-16 justify-start gap-3 md:gap-4 text-base md:text-lg"
                   variant="outline"
+                  size="lg"
+                  className="h-14 justify-start gap-3"
                   onClick={() => setActionDialog({ open: true, type: "in" })}
                 >
-                  <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-green-500/10 shrink-0">
-                    <Plus className="h-4 w-4 md:h-5 md:w-5 text-green-500" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-green-500/10">
+                    <Plus className="h-4 w-4 text-green-600" />
                   </div>
-                  <div className="text-left min-w-0">
-                    <p className="font-semibold text-sm md:text-base">Entrada de Stock</p>
-                    <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Registrar ingreso</p>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold">Entrada de stock</p>
+                    <p className="text-xs text-muted-foreground">Registrar ingreso</p>
                   </div>
                 </Button>
 
                 <Button
-                  size="lg"
-                  className="h-14 md:h-16 justify-start gap-3 md:gap-4 text-base md:text-lg"
                   variant="outline"
+                  size="lg"
+                  className="h-14 justify-start gap-3"
                   onClick={() => setActionDialog({ open: true, type: "out" })}
                 >
-                  <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-red-500/10 shrink-0">
-                    <Minus className="h-4 w-4 md:h-5 md:w-5 text-red-500" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-500/10">
+                    <Minus className="h-4 w-4 text-red-600" />
                   </div>
-                  <div className="text-left min-w-0">
-                    <p className="font-semibold text-sm md:text-base">Salida de Stock</p>
-                    <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Registrar venta o egreso</p>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold">Salida de stock</p>
+                    <p className="text-xs text-muted-foreground">Registrar egreso o ajuste</p>
                   </div>
                 </Button>
 
                 <Button
-                  size="lg"
-                  className="h-14 md:h-16 justify-start gap-3 md:gap-4 text-base md:text-lg"
                   variant="outline"
+                  size="lg"
+                  className="h-14 justify-start gap-3"
                   onClick={() => setActionDialog({ open: true, type: "transfer" })}
                 >
-                  <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-blue-500/10 shrink-0">
-                    <ArrowLeftRight className="h-4 w-4 md:h-5 md:w-5 text-blue-500" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-500/10">
+                    <ArrowLeftRight className="h-4 w-4 text-blue-600" />
                   </div>
-                  <div className="text-left min-w-0">
-                    <p className="font-semibold text-sm md:text-base">Transferir</p>
-                    <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">Mover entre depósitos</p>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold">Transferir</p>
+                    <p className="text-xs text-muted-foreground">Mover entre depósitos</p>
                   </div>
                 </Button>
               </CardContent>
             </Card>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!foundProduct && !error && (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16">
-            <ScanLine className="h-16 w-16 text-muted-foreground/50" />
-            <h3 className="mt-4 text-lg font-semibold">Esperando escaneo</h3>
-            <p className="text-sm text-muted-foreground">
-              Escanee un código de barras o ingrese un SKU para comenzar
-            </p>
           </div>
         )}
       </main>
 
-      {/* Action Dialog */}
-      <Dialog 
-        open={actionDialog.open} 
-        onOpenChange={(open) => { 
-          setActionDialog({ ...actionDialog, open }); 
-          if (!open) resetForm(); 
-        }}
-      >
+      {/* ── Action dialog ── */}
+      <Dialog open={actionDialog.open} onOpenChange={open => { if (!open) closeDialog() }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {actionDialog.type === "in" 
-                ? "Entrada de Stock" 
-                : actionDialog.type === "out" 
-                ? "Salida de Stock" 
-                : "Transferir Stock"}
+              {actionDialog.type === "in"
+                ? "Entrada de stock"
+                : actionDialog.type === "out"
+                ? "Salida de stock"
+                : "Transferir stock"}
             </DialogTitle>
-            <DialogDescription>
-              {foundProduct?.name}
-            </DialogDescription>
+            <DialogDescription>{foundProduct?.name}</DialogDescription>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
+
+          <div className="grid gap-4 py-2">
             {actionDialog.type === "transfer" ? (
               <>
                 <div className="grid gap-2">
@@ -379,21 +367,21 @@ export default function ScanPage() {
                       <SelectValue placeholder="Seleccionar origen" />
                     </SelectTrigger>
                     <SelectContent>
-                      {activeWarehouses.map(warehouse => {
-                        const stock = stockByWarehouse.find(s => s.warehouseId === warehouse.id)
+                      {activeWarehouses.map(w => {
+                        const s = stockByWarehouse.find(x => x.warehouseId === w.id)
                         return (
-                          <SelectItem key={warehouse.id} value={warehouse.id}>
-                            {warehouse.name}{stock ? ` — ${stock.quantity} ud.` : " — sin stock"}
+                          <SelectItem key={w.id} value={w.id}>
+                            {w.name}{s ? ` — ${s.quantity} ud.` : " — sin stock"}
                           </SelectItem>
                         )
                       })}
                     </SelectContent>
                   </Select>
                   {fromWarehouse && (() => {
-                    const stock = stockByWarehouse.find(s => s.warehouseId === fromWarehouse)
-                    return stock && stock.quantity > 0 ? (
+                    const s = stockByWarehouse.find(x => x.warehouseId === fromWarehouse)
+                    return s && s.quantity > 0 ? (
                       <p className="text-xs text-muted-foreground">
-                        Disponible: <span className="font-medium text-foreground">{stock.quantity} unidades</span>
+                        Disponible: <span className="font-medium text-foreground">{s.quantity} unidades</span>
                       </p>
                     ) : null
                   })()}
@@ -405,10 +393,8 @@ export default function ScanPage() {
                       <SelectValue placeholder="Seleccionar destino" />
                     </SelectTrigger>
                     <SelectContent>
-                      {activeWarehouses.filter(w => w.id !== fromWarehouse).map(warehouse => (
-                        <SelectItem key={warehouse.id} value={warehouse.id}>
-                          {warehouse.name}
-                        </SelectItem>
+                      {activeWarehouses.filter(w => w.id !== fromWarehouse).map(w => (
+                        <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -422,53 +408,43 @@ export default function ScanPage() {
                     <SelectValue placeholder="Seleccionar depósito" />
                   </SelectTrigger>
                   <SelectContent>
-                    {activeWarehouses.map(warehouse => (
-                      <SelectItem key={warehouse.id} value={warehouse.id}>
-                        {warehouse.name}
-                      </SelectItem>
+                    {activeWarehouses.map(w => (
+                      <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
-            
+
             <div className="grid gap-2">
               <Label>Cantidad</Label>
               <Input
                 type="number"
                 min="1"
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="Ingrese cantidad"
+                onChange={e => setQuantity(e.target.value)}
               />
             </div>
-            
+
             <div className="grid gap-2">
               <Label>Notas (opcional)</Label>
               <Textarea
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={e => setNotes(e.target.value)}
                 placeholder="Agregar notas..."
+                rows={2}
               />
             </div>
           </div>
-          
+
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => { 
-                setActionDialog({ open: false, type: null }); 
-                resetForm(); 
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button 
+            <Button variant="outline" onClick={closeDialog}>Cancelar</Button>
+            <Button
               onClick={handleAction}
               disabled={
                 processing ||
-                (actionDialog.type === "transfer" 
-                  ? !fromWarehouse || !toWarehouse || !quantity 
+                (actionDialog.type === "transfer"
+                  ? !fromWarehouse || !toWarehouse || !quantity
                   : !selectedWarehouse || !quantity)
               }
             >

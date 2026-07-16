@@ -13,33 +13,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
+import { useProductSearch } from "@/lib/hooks/use-product-search"
 import type { Product } from "@/lib/types"
-
-// ── Ranking ───────────────────────────────────────────────────────────────────
-// Score 0 = exact barcode  1 = exact SKU  2 = name starts with  3 = partial
-// Score -1 = no match (excluded)
-
-const MAX_VISIBLE = 30
-
-function rankProducts(products: Product[], query: string): Product[] {
-  if (!query.trim()) return products.slice(0, MAX_VISIBLE)
-  const q = query.toLowerCase().trim()
-  return products
-    .map(p => {
-      const barcode = (p.barcode ?? "").toLowerCase()
-      const sku = p.sku.toLowerCase()
-      const name = p.name.toLowerCase()
-      if (barcode && barcode === q) return { p, score: 0 }
-      if (sku === q)                return { p, score: 1 }
-      if (name.startsWith(q))       return { p, score: 2 }
-      if (name.includes(q) || sku.includes(q) || barcode.includes(q)) return { p, score: 3 }
-      return { p, score: -1 }
-    })
-    .filter(s => s.score >= 0)
-    .sort((a, b) => a.score - b.score)
-    .slice(0, MAX_VISIBLE)
-    .map(s => s.p)
-}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +57,7 @@ export function ProductSearchCombobox({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
+  const { rank } = useProductSearch(products)
 
   // Debounce — 150 ms keeps the list snappy while avoiding excessive filtering.
   useEffect(() => {
@@ -90,8 +66,7 @@ export function ProductSearchCombobox({
   }, [query])
 
   // Scanner support: exact barcode match → auto-select without user interaction.
-  // A barcode reader types the full code quickly; the debounce settles before
-  // the reader sends Enter, so this effect reliably catches the complete code.
+  // Intentionally barcode-only: SKU/ID lookups are manual selections from the list.
   useEffect(() => {
     if (!debouncedQuery || !open) return
     const match = products.find(p => p.barcode && p.barcode === debouncedQuery)
@@ -103,8 +78,8 @@ export function ProductSearchCombobox({
   }, [debouncedQuery, open, products, onSelect])
 
   const filtered = useMemo(
-    () => rankProducts(products, debouncedQuery),
-    [products, debouncedQuery],
+    () => rank(debouncedQuery),
+    [rank, debouncedQuery],
   )
 
   const selectedProduct = selectedProductId

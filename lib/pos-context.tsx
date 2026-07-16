@@ -52,6 +52,7 @@ interface POSContextValue {
   addOrIncrementProduct: (product: Product, price?: number) => void
   removeItem: (productId: string) => void
   updateItemQty: (productId: string, qty: number) => void
+  updateItemPrice: (productId: string, price: number) => void
   updateItemDiscount: (productId: string, pct: number) => void
   setDiscountAmount: (amount: number) => void
   setCustomerId: (id: string | null) => void
@@ -153,6 +154,10 @@ export function POSProvider({ children }: { children: ReactNode }) {
   const updateItemQty = useCallback((productId: string, qty: number) => {
     if (qty < 1) return
     setItems(prev => prev.map(i => i.product_id === productId ? { ...i, quantity: qty } : i))
+  }, [])
+
+  const updateItemPrice = useCallback((productId: string, price: number) => {
+    setItems(prev => prev.map(i => i.product_id === productId ? { ...i, unit_price: Math.max(0, price) } : i))
   }, [])
 
   const updateItemDiscount = useCallback((productId: string, pct: number) => {
@@ -397,6 +402,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
     addOrIncrementProduct,
     removeItem,
     updateItemQty,
+    updateItemPrice,
     updateItemDiscount,
     setDiscountAmount,
     setCustomerId,
