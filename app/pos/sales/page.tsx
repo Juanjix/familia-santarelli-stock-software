@@ -10,6 +10,7 @@ import {
   ShoppingCart,
   Ticket,
   Ban,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -258,6 +259,15 @@ function VoidDialog({
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
+// Draft huérfano: cualquier borrador con más de 30 minutos de antigüedad.
+const STALE_DRAFT_MINUTES = 30
+
+function isStaleDraft(sale: Sale): boolean {
+  if (sale.status !== "draft") return false
+  const ageMs = Date.now() - new Date(sale.created_at).getTime()
+  return ageMs > STALE_DRAFT_MINUTES * 60 * 1000
+}
+
 export default function SalesHistoryPage() {
   const { fetchSales, voidSale, fetchEmployees } = usePOS()
   const { user } = useAuth()
@@ -270,6 +280,8 @@ export default function SalesHistoryPage() {
   const [filterSeller, setFilterSeller] = useState<string>("all")
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
   const [saleToVoid, setSaleToVoid] = useState<Sale | null>(null)
+  const [cleaning, setCleaning] = useState(false)
+  const [cleanupResult, setCleanupResult] = useState<{ deleted: number } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -295,12 +307,29 @@ export default function SalesHistoryPage() {
     return num.includes(q) || customer.includes(q)
   })
 
+  const staleDraftCount = sales.filter(isStaleDraft).length
+
   async function handleVoid(reason: string) {
     if (!saleToVoid || !user?.employee_id) return
     const result = await voidSale(saleToVoid.id, user.employee_id, reason)
     if (result.ok) {
       setSaleToVoid(null)
       load()
+    }
+  }
+
+  async function handleCleanupDrafts() {
+    setCleaning(true)
+    setCleanupResult(null)
+    try {
+      const res = await fetch("/api/pos/cleanup-drafts", { method: "POST" })
+      const data = await res.json()
+      if (data.ok) {
+        setCleanupResult({ deleted: data.deleted })
+        if (data.deleted > 0) load()
+      }
+    } finally {
+      setCleaning(false)
     }
   }
 
@@ -313,6 +342,29 @@ export default function SalesHistoryPage() {
         </Button>
         <h1 className="font-semibold text-sm">Historial de ventas</h1>
         <div className="ml-auto flex items-center gap-2">
+          {staleDraftCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCleanupDrafts}
+              disabled={cleaning}
+              className="text-xs h-8 gap-1.5 text-amber-700 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/10"
+            >
+              {cleaning
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Trash2 className="h-3.5 w-3.5" />
+              }
+              {staleDraftCount} {staleDraftCount === 1 ? "borrador huérfano" : "borradores huérfanos"}
+            </Button>
+          )}
+          {cleanupResult && (
+            <span className="text-xs text-muted-foreground">
+              {cleanupResult.deleted === 0
+                ? "Sin borradores viejos"
+                : `${cleanupResult.deleted} eliminado${cleanupResult.deleted > 1 ? "s" : ""}`
+              }
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={load} className="text-xs h-8">
             Actualizar
           </Button>
@@ -378,6 +430,11 @@ export default function SalesHistoryPage() {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="font-mono text-sm font-semibold">{fmtSaleNumber(sale.sale_number)}</span>
                     <StatusBadge status={sale.status} />
+                    {isStaleDraft(sale) && (
+                      <Badge variant="outline" className="text-xs border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                        Huérfano
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>{fmtDate(sale.confirmed_at ?? sale.created_at)}</span>
