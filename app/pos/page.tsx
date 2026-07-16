@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   ShoppingCart,
@@ -19,6 +19,8 @@ import {
   History,
   Printer,
   CircleDollarSign,
+  ScanLine,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,12 +41,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ProductSearchCombobox } from "@/components/products/product-search-combobox"
+import { useProductSearch } from "@/lib/hooks/use-product-search"
 import { usePOS } from "@/lib/pos-context"
 import { useInventory } from "@/lib/inventory-context"
 import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
-import type { Employee, Warehouse, PaymentMethod, POSCustomer, ConfirmSaleResult } from "@/lib/types"
+import type { Product, Employee, Warehouse, PaymentMethod, POSCustomer, ConfirmSaleResult } from "@/lib/types"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -312,6 +314,135 @@ function CustomerDialog({
   )
 }
 
+// ── POS search bar ────────────────────────────────────────────────────────────
+// Always-visible input that works with barcode/QR scanners AND manual text
+// search. A scanner sends keystrokes + Enter; the input captures them regardless
+// of what had focus before because it is always in the DOM and auto-focuses on
+// mount. Typing shows an inline dropdown; Enter on an exact code auto-adds.
+
+function POSSearchBar({
+  products,
+  getStock,
+  onSelect,
+}: {
+  products: Product[]
+  getStock: (id: string) => number
+  onSelect: (product: Product) => void
+}) {
+  const [query, setQuery] = useState("")
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [notFound, setNotFound] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { resolve, rank } = useProductSearch(products)
+
+  const results = useMemo(
+    () => (query.trim() ? rank(query) : []),
+    [query, rank],
+  )
+
+  // Show dropdown only when there are results and not an exact code match
+  useEffect(() => {
+    const exact = query.trim() ? resolve(query) : null
+    setShowDropdown(results.length > 0 && !exact)
+  }, [results, query, resolve])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setShowDropdown(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
+
+  function add(product: Product) {
+    onSelect(product)
+    setQuery("")
+    setShowDropdown(false)
+    setNotFound(false)
+    inputRef.current?.focus()
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const code = query.trim()
+    if (!code) return
+
+    const exact = resolve(code)
+    if (exact) { add(exact); return }
+
+    if (results.length === 1) { add(results[0]); return }
+
+    setNotFound(true)
+    if (results.length > 1) setShowDropdown(true)
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <form onSubmit={handleSubmit}>
+        <div className="relative">
+          <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            ref={inputRef}
+            value={query}
+            onChange={e => { setQuery(e.target.value); setNotFound(false) }}
+            onFocus={() => { if (results.length > 0) setShowDropdown(true) }}
+            placeholder="Buscar por nombre, SKU o escanear código..."
+            className="pl-9 pr-8 h-10 text-sm"
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => { setQuery(""); setNotFound(false); setShowDropdown(false); inputRef.current?.focus() }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </form>
+
+      {notFound && results.length === 0 && (
+        <div className="flex items-center gap-2 mt-1.5 text-xs text-destructive">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          Sin resultado para <span className="font-mono font-medium">"{query}"</span>
+        </div>
+      )}
+
+      {showDropdown && results.length > 0 && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border rounded-md shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+          {results.map(p => {
+            const stock = getStock(p.id)
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onMouseDown={e => { e.preventDefault(); add(p) }}
+                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted transition-colors text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{p.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{p.sku}{p.barcode ? ` · ${p.barcode}` : ""}</p>
+                </div>
+                <span className={cn(
+                  "ml-3 text-xs font-medium shrink-0",
+                  stock === 0 ? "text-destructive" : "text-green-700 dark:text-green-400"
+                )}>
+                  {stock} u.
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main POS page ──────────────────────────────────────────────────────────────
 
 export default function POSPage() {
@@ -354,14 +485,6 @@ export default function POSPage() {
   const getStock = useCallback(
     (productId: string) => products.find(p => p.id === productId)?.total_stock ?? 0,
     [products],
-  )
-
-  const handleAddProduct = useCallback(
-    (productId: string) => {
-      const p = products.find(p => p.id === productId)
-      if (p) addOrIncrementProduct(p)
-    },
-    [products, addOrIncrementProduct],
   )
 
   async function handleConfirm() {
@@ -460,16 +583,12 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Buscador de producto */}
+        {/* Buscador / escáner de producto */}
         <div className="px-4 py-3 border-b shrink-0">
-          <ProductSearchCombobox
+          <POSSearchBar
             products={activeProducts}
-            selectedProductId=""
-            onSelect={handleAddProduct}
             getStock={getStock}
-            placeholder="Buscar o escanear producto..."
-            emptyMessage="No hay productos activos."
-            className="h-9 text-sm"
+            onSelect={product => addOrIncrementProduct(product)}
           />
         </div>
 
@@ -523,6 +642,7 @@ export default function POSPage() {
                               min={0}
                               value={item.unit_price || ""}
                               onChange={e => updateItemPrice(item.product_id, Number(e.target.value))}
+                              onFocus={e => e.target.select()}
                               placeholder="0"
                               className={cn(
                                 "h-6 w-20 text-xs px-2",
@@ -538,6 +658,7 @@ export default function POSPage() {
                               max={100}
                               value={item.discount_pct || ""}
                               onChange={e => updateItemDiscount(item.product_id, Number(e.target.value))}
+                              onFocus={e => e.target.select()}
                               placeholder="0%"
                               className="h-6 w-14 text-xs px-2"
                             />
@@ -613,7 +734,18 @@ export default function POSPage() {
 
         {/* Pagos */}
         <div className="px-4 py-4 border-b space-y-2 overflow-y-auto">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">Método de pago</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Método de pago</p>
+            {total > 0 && (
+              <button
+                type="button"
+                onClick={() => setPayment("cash", total)}
+                className="text-xs text-primary hover:underline font-medium"
+              >
+                Cobrar total en efectivo
+              </button>
+            )}
+          </div>
           {PAYMENT_METHODS.map(({ value, label, icon: Icon }) => {
             const p = paymentMap[value]
             return (
@@ -629,6 +761,7 @@ export default function POSPage() {
                     if (v > 0) setPayment(value, v)
                     else removePayment(value)
                   }}
+                  onFocus={e => e.target.select()}
                   placeholder="—"
                   className="h-7 text-xs flex-1"
                 />
