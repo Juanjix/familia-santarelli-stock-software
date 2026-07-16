@@ -21,6 +21,8 @@ import {
   CircleDollarSign,
   ScanLine,
   AlertCircle,
+  Undo2,
+  CornerDownLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -456,7 +458,7 @@ export default function POSPage() {
     fetchEmployees, fetchWarehouses, searchCustomers,
   } = usePOS()
 
-  const { products } = useInventory()
+  const { products, getStockByWarehouse } = useInventory()
   const { user } = useAuth()
 
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -469,18 +471,37 @@ export default function POSPage() {
   const [successResult, setSuccessResult] = useState<(ConfirmSaleResult & { ok: true; sale_number: number; ticket_number: string }) | null>(null)
   const [successPrintData, setSuccessPrintData] = useState<PrintTicketData | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
+  const [lastAdded, setLastAdded] = useState<{ productId: string; wasNew: boolean } | null>(null)
 
   const hasPriceZero = items.some(it => it.unit_price === 0)
 
+  // Restore seller/warehouse from localStorage; fall back to first available
   useEffect(() => {
     Promise.all([fetchEmployees(), fetchWarehouses()]).then(([emps, whs]) => {
       setEmployees(emps)
       setWarehouses(whs)
-      // Pre-seleccionar el primer empleado/depósito como default
-      if (emps.length > 0) setSellerId(emps[0].id)
-      if (whs.length > 0) setWarehouseId(whs[0].id)
+      const savedSeller = localStorage.getItem("pos:sellerId")
+      const savedWarehouse = localStorage.getItem("pos:warehouseId")
+      if (savedSeller && emps.find(e => e.id === savedSeller)) setSellerId(savedSeller)
+      else if (emps.length > 0) setSellerId(emps[0].id)
+      if (savedWarehouse && whs.find(w => w.id === savedWarehouse)) setWarehouseId(savedWarehouse)
+      else if (whs.length > 0) setWarehouseId(whs[0].id)
     })
   }, [fetchEmployees, fetchWarehouses])
+
+  // Auto-clear undo hint after 5 s
+  useEffect(() => {
+    if (!lastAdded) return
+    const t = setTimeout(() => setLastAdded(null), 5000)
+    return () => clearTimeout(t)
+  }, [lastAdded])
+
+  // Clear undo if the item was manually removed from cart
+  useEffect(() => {
+    if (lastAdded && !items.find(i => i.product_id === lastAdded.productId)) {
+      setLastAdded(null)
+    }
+  }, [items, lastAdded])
 
   const activeProducts = useMemo(() => products.filter(p => p.is_active), [products])
 
@@ -489,8 +510,59 @@ export default function POSPage() {
     [products],
   )
 
+  // Stock in the currently selected warehouse for a given product
+  const getWarehouseStock = useCallback(
+    (productId: string) =>
+      warehouseId
+        ? (getStockByWarehouse(productId).find(s => s.warehouseId === warehouseId)?.quantity ?? 0)
+        : 0,
+    [getStockByWarehouse, warehouseId],
+  )
+
+  // Wrap addOrIncrement to track the last scanned product for undo
+  const addWithUndo = useCallback((product: Product) => {
+    const wasNew = !items.find(i => i.product_id === product.id)
+    addOrIncrementProduct(product)
+    setLastAdded({ productId: product.id, wasNew })
+  }, [items, addOrIncrementProduct])
+
+  const handleUndo = useCallback(() => {
+    if (!lastAdded) return
+    const { productId, wasNew } = lastAdded
+    const item = items.find(i => i.product_id === productId)
+    if (!item) return
+    if (wasNew || item.quantity <= 1) removeItem(productId)
+    else updateItemQty(productId, item.quantity - 1)
+    setLastAdded(null)
+  }, [lastAdded, items, removeItem, updateItemQty])
+
+  // Stable refs so the keydown closure always calls the latest function instances
+  const handleConfirmRef = useRef<(() => void) | null>(null)
+  const handleUndoRef    = useRef<(() => void) | null>(null)
+
+  // Keyboard shortcuts: Ctrl/⌘+Enter → confirm, Ctrl/⌘+Z → undo last scan
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.key === "Enter") {
+        e.preventDefault()
+        handleConfirmRef.current?.()
+      }
+      if (ctrl && e.key === "z") {
+        // Only intercept when focus is NOT inside an editable field (let the browser handle text undo)
+        const tag = (document.activeElement as HTMLElement)?.tagName
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          e.preventDefault()
+          handleUndoRef.current?.()
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
   async function handleConfirm() {
-    if (!sellerId || !warehouseId || isCartEmpty || !isPaymentComplete) return
+    if (!sellerId || !warehouseId || isCartEmpty || !isPaymentComplete || hasPriceZero) return
     setConfirming(true)
     setConfirmError(null)
     const result = await confirmSale(sellerId, warehouseId)
@@ -524,7 +596,12 @@ export default function POSPage() {
     setConfirmError(null)
     setCustomerObj(null)
     setCustomerId(null)
+    setLastAdded(null)
   }
+
+  // Keep refs in sync with latest function instances on every render
+  handleConfirmRef.current = handleConfirm
+  handleUndoRef.current    = handleUndo
 
   if (successResult && successPrintData) {
     return <SuccessScreen result={successResult} printData={successPrintData} onNewSale={handleNewSale} />
@@ -559,8 +636,8 @@ export default function POSPage() {
         <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b shrink-0 bg-muted/30">
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">Vendedor</Label>
-            <Select value={sellerId} onValueChange={setSellerId}>
-              <SelectTrigger className="h-8 text-xs">
+            <Select value={sellerId} onValueChange={id => { setSellerId(id); localStorage.setItem("pos:sellerId", id) }}>
+              <SelectTrigger className={cn("h-8 text-xs", !sellerId && "border-amber-500/60")}>
                 <SelectValue placeholder="Seleccioná..." />
               </SelectTrigger>
               <SelectContent>
@@ -572,8 +649,8 @@ export default function POSPage() {
           </div>
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">Depósito</Label>
-            <Select value={warehouseId} onValueChange={setWarehouseId}>
-              <SelectTrigger className="h-8 text-xs">
+            <Select value={warehouseId} onValueChange={id => { setWarehouseId(id); localStorage.setItem("pos:warehouseId", id) }}>
+              <SelectTrigger className={cn("h-8 text-xs", !warehouseId && "border-amber-500/60")}>
                 <SelectValue placeholder="Seleccioná..." />
               </SelectTrigger>
               <SelectContent>
@@ -586,12 +663,22 @@ export default function POSPage() {
         </div>
 
         {/* Buscador / escáner de producto */}
-        <div className="px-4 py-3 border-b shrink-0">
+        <div className="px-4 py-3 border-b shrink-0 space-y-2">
           <POSSearchBar
             products={activeProducts}
             getStock={getStock}
-            onSelect={product => addOrIncrementProduct(product)}
+            onSelect={addWithUndo}
           />
+          {lastAdded && (
+            <button
+              onClick={handleUndo}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Undo2 className="h-3 w-3" />
+              Deshacer último scan
+              <kbd className="ml-1 rounded border border-border px-1 py-0.5 text-[10px] font-mono text-muted-foreground">⌘Z</kbd>
+            </button>
+          )}
         </div>
 
         {/* Carrito */}
@@ -607,18 +694,31 @@ export default function POSPage() {
               {items.map(item => {
                 const lineTotal = item.quantity * item.unit_price * (1 - item.discount_pct / 100)
                 const hasNoPrice = item.unit_price === 0
+                const availStock = getWarehouseStock(item.product_id)
+                const isOverstock = warehouseId && item.quantity > availStock
                 return (
                   <div
                     key={item.product_id}
                     className={cn(
                       "rounded-lg border bg-card p-3",
-                      hasNoPrice && "border-amber-500/50 bg-amber-500/5"
+                      hasNoPrice && "border-amber-500/50 bg-amber-500/5",
+                      isOverstock && !hasNoPrice && "border-destructive/50 bg-destructive/5"
                     )}
                   >
                     <div className="flex gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium leading-tight truncate">{item.product.name}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{item.product.sku}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground font-mono">{item.product.sku}</p>
+                          {warehouseId && (
+                            <span className={cn(
+                              "text-xs",
+                              isOverstock ? "text-destructive font-medium" : "text-muted-foreground/70"
+                            )}>
+                              {isOverstock ? `⚠ stock: ${availStock}` : `disp: ${availStock}`}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex flex-wrap items-center gap-3 mt-2">
                           {/* Qty */}
                           <div className="flex items-center gap-1">
@@ -832,15 +932,30 @@ export default function POSPage() {
           >
             {confirming
               ? <><Loader2 className="h-4 w-4 animate-spin" />Procesando...</>
-              : <><Check className="h-4 w-4" />Confirmar venta<ChevronRight className="h-4 w-4 ml-auto" /></>
+              : <>
+                  <Check className="h-4 w-4" />
+                  Confirmar venta
+                  <kbd className="ml-auto rounded border border-primary-foreground/30 px-1 py-0.5 text-[10px] font-mono opacity-70">⌘↩</kbd>
+                </>
             }
           </Button>
+          {/* Mensajes de bloqueo — en orden de prioridad */}
+          {!isCartEmpty && !sellerId && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
+              Seleccioná un vendedor para continuar.
+            </p>
+          )}
+          {!isCartEmpty && sellerId && !warehouseId && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
+              Seleccioná un depósito para continuar.
+            </p>
+          )}
           {hasPriceZero && !isCartEmpty && (
             <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
               Hay ítems con precio $0. Corregí los precios para confirmar.
             </p>
           )}
-          {!isPaymentComplete && !isCartEmpty && !hasPriceZero && (
+          {!isPaymentComplete && !isCartEmpty && sellerId && warehouseId && !hasPriceZero && (
             <p className="text-xs text-muted-foreground text-center mt-2">
               Falta ingresar {fmtARS(Math.max(0, total - paymentTotal))} en métodos de pago.
             </p>

@@ -178,6 +178,8 @@ export default function DashboardPage() {
                             {movement.type === "exit" && `-${movement.quantity} de ${movement.fromWarehouse}`}
                             {movement.type === "transfer" && `${movement.quantity} de ${movement.fromWarehouse} a ${movement.toWarehouse}`}
                             {movement.type === "adjustment" && `${movement.quantity > 0 ? "+" : ""}${movement.quantity} en ${movement.fromWarehouse}`}
+                            {movement.type === "sale" && `-${movement.quantity} · venta desde ${movement.fromWarehouse ?? ""}`}
+                            {movement.type === "sale_reversal" && `+${movement.quantity} · anulación en ${movement.fromWarehouse ?? ""}`}
                           </p>
                         </div>
                         <div className="text-right">

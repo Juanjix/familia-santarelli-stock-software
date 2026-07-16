@@ -26,13 +26,14 @@ import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
 
 const navOperacion = [
-  { name: "Panel",           href: "/",         icon: LayoutDashboard, module: "dashboard" },
-  { name: "Punto de Venta",  href: "/pos",      icon: ShoppingCart,    module: "pos" },
-  { name: "Escanear",        href: "/scan",      icon: ScanLine,        module: "scan" },
-  { name: "Productos",       href: "/products",  icon: Package,         module: "products" },
-  { name: "Inventario",      href: "/inventory", icon: Boxes,           module: "inventory" },
-  { name: "Sobres",          href: "/sobres",    icon: Mail,            module: "sobres" },
-  { name: "Ticket de Cambio",href: "/coupons",   icon: Ticket,          module: "coupons" },
+  { name: "Panel",            href: "/",         icon: LayoutDashboard, module: "dashboard" },
+  { name: "Punto de Venta",   href: "/pos",      icon: ShoppingCart,    module: "pos" },
+  { name: "Escanear",         href: "/scan",     icon: ScanLine,        module: "scan" },
+  { name: "Productos",        href: "/products", icon: Package,         module: "products" },
+  { name: "Inventario",       href: "/inventory",icon: Boxes,           module: "inventory" },
+  { name: "Etiquetas",        href: "/labels",   icon: Tags,            module: "labels" },
+  { name: "Reparaciones",     href: "/sobres",   icon: Mail,            module: "sobres" },
+  { name: "Ticket de Canje",  href: "/coupons",  icon: Ticket,          module: "coupons" },
 ]
 
 const navGestion = [
@@ -42,7 +43,6 @@ const navGestion = [
 ]
 
 const navConfiguracion = [
-  { name: "Etiquetas",     href: "/labels",     icon: Tags,      module: "labels" },
   { name: "Depósitos",     href: "/warehouses", icon: Warehouse, module: "warehouses" },
   { name: "Configuración", href: "/settings",   icon: Settings,  module: "settings" },
 ]
