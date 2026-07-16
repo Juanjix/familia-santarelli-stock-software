@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Package, Boxes, DollarSign, AlertTriangle, ArrowDownRight, ArrowUpRight, ArrowLeftRight, Wrench, ShoppingCart, Tags, Repeat2, Wrench as WrenchIcon, ChevronRight } from "lucide-react"
+import { Package, Boxes, DollarSign, AlertTriangle, Tags, Repeat2, Wrench as WrenchIcon, ChevronRight, ShoppingCart } from "lucide-react"
+import { getMovementIcon } from "@/components/movement-badge"
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(value)
@@ -20,23 +21,6 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("es-AR").format(value)
 }
 
-const movementIcons = {
-  entry: ArrowDownRight,
-  exit: ArrowUpRight,
-  transfer: ArrowLeftRight,
-  adjustment: Wrench,
-  sale: ShoppingCart,
-  sale_reversal: ShoppingCart,
-}
-
-const movementColors = {
-  entry: "text-green-500",
-  exit: "text-red-500",
-  transfer: "text-primary",
-  adjustment: "text-yellow-500",
-  sale: "text-red-500",
-  sale_reversal: "text-green-500",
-}
 
 // Client-side only relative time to avoid hydration mismatch
 function useRelativeTime(dateString: string): string {
@@ -301,10 +285,10 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-4">
                   {movements.slice(0, 6).map((movement) => {
-                    const Icon = movementIcons[movement.type]
+                    const { Icon, colorClass } = getMovementIcon(movement.type)
                     return (
                       <div key={movement.id} className="flex items-center gap-4">
-                        <div className={`rounded-lg bg-secondary p-2 ${movementColors[movement.type]}`}>
+                        <div className={`rounded-lg bg-secondary p-2 ${colorClass}`}>
                           <Icon className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">

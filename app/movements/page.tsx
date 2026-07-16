@@ -4,7 +4,6 @@ import { useState, useMemo } from "react"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
@@ -21,21 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Search, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Settings2 } from "lucide-react"
-
-const movementTypeLabels: Record<string, string> = {
-  entry: "Entrada",
-  exit: "Salida",
-  transfer: "Transferencia",
-  adjustment: "Ajuste",
-}
-
-const movementTypeIcons: Record<string, React.ReactNode> = {
-  entry: <ArrowDownCircle className="h-4 w-4 text-green-500" />,
-  exit: <ArrowUpCircle className="h-4 w-4 text-red-500" />,
-  transfer: <ArrowLeftRight className="h-4 w-4 text-blue-500" />,
-  adjustment: <Settings2 className="h-4 w-4 text-yellow-500" />,
-}
+import { Search, ArrowLeftRight } from "lucide-react"
+import { MovementBadge } from "@/components/movement-badge"
+import { MOVEMENT_TYPE_OPTIONS } from "@/lib/movement-types"
 
 export default function MovementsPage() {
   const { movements } = useInventory()
@@ -94,15 +81,14 @@ export default function MovementsPage() {
             />
           </div>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <SelectValue placeholder="Tipo de movimiento" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los tipos</SelectItem>
-              <SelectItem value="entry">Entradas</SelectItem>
-              <SelectItem value="exit">Salidas</SelectItem>
-              <SelectItem value="transfer">Transferencias</SelectItem>
-              <SelectItem value="adjustment">Ajustes</SelectItem>
+              {MOVEMENT_TYPE_OPTIONS.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -120,22 +106,7 @@ export default function MovementsPage() {
               <Card key={movement.id}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      {movementTypeIcons[movement.type]}
-                      <Badge
-                        variant={
-                          movement.type === "entry"
-                            ? "default"
-                            : movement.type === "exit"
-                            ? "destructive"
-                            : movement.type === "transfer"
-                            ? "secondary"
-                            : "outline"
-                        }
-                      >
-                        {movementTypeLabels[movement.type]}
-                      </Badge>
-                    </div>
+                    <MovementBadge type={movement.type} />
                     <span className={`font-semibold text-lg ${movement.quantity > 0 ? "text-green-500" : "text-red-500"}`}>
                       {movement.quantity > 0 ? "+" : ""}{movement.quantity}
                     </span>
@@ -204,22 +175,7 @@ export default function MovementsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        {movementTypeIcons[movement.type]}
-                        <Badge
-                          variant={
-                            movement.type === "entry"
-                              ? "default"
-                              : movement.type === "exit"
-                              ? "destructive"
-                              : movement.type === "transfer"
-                              ? "secondary"
-                              : "outline"
-                          }
-                        >
-                          {movementTypeLabels[movement.type]}
-                        </Badge>
-                      </div>
+                      <MovementBadge type={movement.type} />
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={`font-semibold ${movement.quantity > 0 ? "text-green-500" : "text-red-500"}`}>

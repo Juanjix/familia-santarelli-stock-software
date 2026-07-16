@@ -37,15 +37,13 @@ import {
   Scale,
   DollarSign,
   Warehouse,
-  ArrowDownRight,
-  ArrowUpRight,
-  Wrench,
-  ShoppingCart,
   Plus,
   Minus,
   CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getMovementIcon } from "@/components/movement-badge"
+import { getMovementConfig } from "@/lib/movement-types"
 
 // Client-side only relative time to avoid hydration mismatch
 function RelativeTime({ date }: { date: string }) {
@@ -86,23 +84,6 @@ const stockStatusConfig = {
   out_of_stock: { label: "Sin Stock", className: "bg-red-500/10 text-red-500 border-red-500/20" },
 }
 
-const movementIcons = {
-  entry: ArrowDownRight,
-  exit: ArrowUpRight,
-  transfer: ArrowLeftRight,
-  adjustment: Wrench,
-  sale: ShoppingCart,
-  sale_reversal: ShoppingCart,
-}
-
-const movementColors = {
-  entry: "text-green-500",
-  exit: "text-red-500",
-  transfer: "text-primary",
-  adjustment: "text-yellow-500",
-  sale: "text-red-500",
-  sale_reversal: "text-green-500",
-}
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(value)
@@ -417,18 +398,17 @@ const showSuccess = (message: string) => {
                 {productMovements.length > 0 ? (
                   <div className="space-y-4">
                     {productMovements.map((movement) => {
-                      const Icon = movementIcons[movement.type]
+                      const { Icon, colorClass } = getMovementIcon(movement.type)
+                      const cfg = getMovementConfig(movement.type)
                       return (
                         <div key={movement.id} className="flex items-center gap-4">
-                          <div className={`rounded-lg bg-secondary p-2 ${movementColors[movement.type]}`}>
+                          <div className={`rounded-lg bg-secondary p-2 ${colorClass}`}>
                             <Icon className="h-4 w-4" />
                           </div>
                           <div className="flex-1">
                             <p className="text-sm font-medium">
-                              {movement.type === "entry" && `+${movement.quantity} unidades ingresaron`}
-                              {movement.type === "exit" && `${movement.quantity} unidades salieron`}
-                              {movement.type === "transfer" && `${movement.quantity} unidades transferidas`}
-                              {movement.type === "adjustment" && `Stock ajustado en ${movement.quantity}`}
+                              {cfg?.sign === "+" ? "+" : cfg?.sign === "-" ? "-" : "±"}{movement.quantity} unidades
+                              {" · "}{cfg?.label ?? movement.type}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {movement.fromWarehouse && `Desde: ${movement.fromWarehouse}`}
