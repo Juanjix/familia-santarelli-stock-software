@@ -359,7 +359,7 @@ const showSuccess = (message: string) => {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Código de Barras</p>
-                      <p className="font-mono font-medium">{product.barcode}</p>
+                      <p className="font-mono font-medium text-sm">{product.barcode}</p>
                     </div>
                   </div>
                   <Separator orientation="vertical" className="h-12" />
