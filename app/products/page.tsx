@@ -410,10 +410,10 @@ function ProductsPageInner() {
         setStickyInitialWarehouse(formInitialWarehouse)
       }
 
-      setDialogOpen(false)
-      resetForm()
     } finally {
       setSaving(false)
+      setDialogOpen(false)
+      resetForm()
     }
   }
 
