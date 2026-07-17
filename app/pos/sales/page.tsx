@@ -310,8 +310,9 @@ export default function SalesHistoryPage() {
   const staleDraftCount = sales.filter(isStaleDraft).length
 
   async function handleVoid(reason: string) {
-    if (!saleToVoid || !user?.employee_id) return
-    const result = await voidSale(saleToVoid.id, user.employee_id, reason)
+    if (!saleToVoid || !user) return
+    const voidedById = user.employee_id ?? user.id
+    const result = await voidSale(saleToVoid.id, voidedById, reason)
     if (result.ok) {
       setSaleToVoid(null)
       load()

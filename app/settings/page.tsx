@@ -400,6 +400,7 @@ export default function SettingsPage() {
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
   const [employeeDialogName, setEmployeeDialogName] = useState("")
+  const [employeeDialogCommissionPct, setEmployeeDialogCommissionPct] = useState("")
   const [employeeDialogActive, setEmployeeDialogActive] = useState(true)
   const [savingEmployee, setSavingEmployee] = useState(false)
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null)
@@ -408,11 +409,18 @@ export default function SettingsPage() {
   const handleSaveEmployee = async () => {
     if (!employeeDialogName.trim()) return
     setSavingEmployee(true)
+    const commissionPct = employeeDialogCommissionPct.trim() !== ""
+      ? parseFloat(employeeDialogCommissionPct)
+      : null
     try {
       if (editingEmployee) {
-        await updateEmployee(editingEmployee.id, { name: employeeDialogName.trim(), is_active: employeeDialogActive })
+        await updateEmployee(editingEmployee.id, {
+          name: employeeDialogName.trim(),
+          is_active: employeeDialogActive,
+          commission_pct: commissionPct,
+        })
       } else {
-        await addEmployee(employeeDialogName.trim())
+        await addEmployee(employeeDialogName.trim(), commissionPct)
       }
       resetEmployeeForm()
       setEmployeeDialogOpen(false)
@@ -424,11 +432,14 @@ export default function SettingsPage() {
   }
 
   const resetEmployeeForm = () => {
-    setEmployeeDialogName(""); setEmployeeDialogActive(true); setEditingEmployee(null)
+    setEmployeeDialogName(""); setEmployeeDialogCommissionPct(""); setEmployeeDialogActive(true); setEditingEmployee(null)
   }
 
   const openEditEmployee = (e: Employee) => {
-    setEditingEmployee(e); setEmployeeDialogName(e.name); setEmployeeDialogActive(e.is_active)
+    setEditingEmployee(e)
+    setEmployeeDialogName(e.name)
+    setEmployeeDialogCommissionPct(e.commission_pct != null ? String(e.commission_pct) : "")
+    setEmployeeDialogActive(e.is_active)
     setEmployeeDialogOpen(true)
   }
 
@@ -1402,6 +1413,25 @@ export default function SettingsPage() {
                         <Label>Nombre</Label>
                         <Input value={employeeDialogName} onChange={(e) => setEmployeeDialogName(e.target.value)} placeholder="Ej: María García" autoFocus />
                       </div>
+                      <div className="grid gap-1.5">
+                        <Label>
+                          Comisión <span className="font-normal text-muted-foreground text-xs">(opcional)</span>
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={employeeDialogCommissionPct}
+                            onChange={(e) => setEmployeeDialogCommissionPct(e.target.value)}
+                            placeholder="Ej: 5"
+                            className="pr-7"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Porcentaje que se genera automáticamente al confirmar una venta.</p>
+                      </div>
                       {editingEmployee && (
                         <div className="flex items-center gap-2">
                           <Switch checked={employeeDialogActive} onCheckedChange={setEmployeeDialogActive} id="employee-active" />
@@ -1429,6 +1459,9 @@ export default function SettingsPage() {
                         <span className={`text-sm font-medium ${!e.is_active ? "text-muted-foreground line-through" : ""}`}>
                           {e.name}
                         </span>
+                        {e.commission_pct != null && e.commission_pct > 0 && (
+                          <Badge variant="outline" className="text-xs">{e.commission_pct}% comisión</Badge>
+                        )}
                         {!e.is_active && <Badge variant="secondary" className="text-xs">Inactivo</Badge>}
                       </div>
                       <div className="flex gap-1">

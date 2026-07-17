@@ -999,7 +999,7 @@ function NewEnvelopeDialog({ open, onClose, onCreated }: NewEnvelopeDialogProps)
 interface EnvelopeDetailDialogProps {
   envelope: Envelope | null
   onClose: () => void
-  onUpdated: (id: string, updates: Partial<Envelope>, statusNote?: string) => Promise<void>
+  onUpdated: (id: string, updates: Partial<Envelope>, statusNote?: string, performedBy?: string) => Promise<void>
   onLocalUpdate: (id: string, updates: Partial<Envelope>) => void
   onPrint: (envelope: Envelope) => void
 }
@@ -1127,13 +1127,13 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
     try {
       switch (activeAction) {
         case "request_quote":
-          await onUpdated(envelope.id, { status: "quote_pending", quote_status: "pending" })
+          await onUpdated(envelope.id, { status: "quote_pending", quote_status: "pending" }, undefined, op)
           break
         case "send_to_jeweler":
-          await onUpdated(envelope.id, { status: "in_workshop", jeweler_id: actionJewelerId || null })
+          await onUpdated(envelope.id, { status: "in_workshop", jeweler_id: actionJewelerId || null }, undefined, op)
           break
         case "receive_from_jeweler":
-          await onUpdated(envelope.id, { status: "ready" })
+          await onUpdated(envelope.id, { status: "ready" }, undefined, op)
           break
         case "transfer": {
           const result = await sendTransfer(envelope.id, envelope.current_warehouse_id, actionWarehouseId)
@@ -1167,20 +1167,21 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
             quote_amount: actionQuoteAmount ? parseFloat(actionQuoteAmount) : null,
             quote_notes: actionQuoteNotes.trim() || null,
             quote_informed_at: new Date().toISOString(),
-          })
+          }, undefined, op)
           break
         case "approve_quote":
           await onUpdated(envelope.id, {
             status: "quote_approved",
             quote_status: "approved",
             quote_approved_at: new Date().toISOString(),
-          })
+          }, undefined, op)
           break
         case "reject_quote":
           await onUpdated(
             envelope.id,
             { status: "received", quote_status: "rejected" },
-            actionNote.trim() || "Presupuesto rechazado por el cliente"
+            actionNote.trim() || "Presupuesto rechazado por el cliente",
+            op
           )
           break
         case "deliver":
@@ -1192,11 +1193,12 @@ function EnvelopeDetailDialog({ envelope, onClose, onUpdated, onLocalUpdate, onP
               delivered_by: actionDeliveredBy.trim() || null,
               delivery_notes: actionDeliveryNotes.trim() || null,
             },
-            actionDeliveredBy.trim() ? `Entregado a ${actionDeliveredBy.trim()}` : undefined
+            actionDeliveredBy.trim() ? `Entregado a ${actionDeliveredBy.trim()}` : undefined,
+            op
           )
           break
         case "cancel_envelope":
-          await onUpdated(envelope.id, { status: "cancelled" }, actionNote.trim() || undefined)
+          await onUpdated(envelope.id, { status: "cancelled" }, actionNote.trim() || undefined, op)
           break
       }
       setActiveAction(null)
@@ -1847,8 +1849,8 @@ export default function SobresPage() {
     setDetailEnvelope(envelope)
   }
 
-  const handleUpdated = useCallback(async (id: string, updates: Partial<Envelope>, statusNote?: string) => {
-    await updateEnvelope(id, updates, statusNote)
+  const handleUpdated = useCallback(async (id: string, updates: Partial<Envelope>, statusNote?: string, performedBy?: string) => {
+    await updateEnvelope(id, updates, statusNote, performedBy)
 
     // Si cambió el local actual, también actualizamos el objeto joined localmente
     // para que la ubicación se refleje al instante sin esperar un refetch.

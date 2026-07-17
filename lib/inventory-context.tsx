@@ -118,12 +118,12 @@ interface InventoryContextType {
   addJeweler: (name: string, workerType?: WorkerType) => Promise<Jeweler | null>
   updateJeweler: (id: string, updates: Partial<Jeweler>) => Promise<void>
   deleteJeweler: (id: string) => Promise<void>
-  addEmployee: (name: string) => Promise<Employee | null>
+  addEmployee: (name: string, commissionPct?: number | null) => Promise<Employee | null>
   updateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>
   deleteEmployee: (id: string) => Promise<{ success: boolean; error?: string }>
   fetchEnvelopes: (filters?: { status?: EnvelopeStatus; search?: string }) => Promise<Envelope[]>
   createEnvelope: (data: Omit<Envelope, 'id' | 'number' | 'status' | 'created_at' | 'updated_at' | 'customer' | 'received_warehouse' | 'jeweler' | 'product_subtype' | 'quote_approved_at' | 'current_warehouse_id' | 'pending_transfer_to_warehouse_id' | 'pending_transfer_sent_by' | 'pending_transfer_sent_at'>) => Promise<Envelope | null>
-  updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string) => Promise<void>
+  updateEnvelope: (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, performedBy?: string) => Promise<void>
   getEnvelopeStatusLog: (envelopeId: string) => Promise<EnvelopeStatusLog[]>
   fetchEnvelopeEvents: (envelopeId: string) => Promise<EnvelopeEvent[]>
   sendTransfer: (envelopeId: string, fromWarehouseId: string | null, toWarehouseId: string) => Promise<{ success: boolean; error?: string }>
@@ -745,8 +745,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, [supabase])
 
   // ── Employees ────────────────────────────────────────────
-  const addEmployee = useCallback(async (name: string): Promise<Employee | null> => {
-    const { data: created, error } = await supabase.from("employees").insert({ name }).select().single()
+  const addEmployee = useCallback(async (name: string, commissionPct?: number | null): Promise<Employee | null> => {
+    const payload: Record<string, unknown> = { name }
+    if (commissionPct != null) payload.commission_pct = commissionPct
+    const { data: created, error } = await supabase.from("employees").insert(payload).select().single()
     if (error) throw new Error(error.message)
     setEmployees(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
     return created
@@ -830,7 +832,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     rejected: 'Presupuesto rechazado por el cliente',
   }
 
-  const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string): Promise<void> => {
+  const updateEnvelope = useCallback(async (id: string, updates: Partial<Omit<Envelope, 'id' | 'number' | 'created_at'>>, statusNote?: string, performedBy?: string): Promise<void> => {
     const createdBy = currentUserName
     const { data: current } = await supabase
       .from("envelopes")
@@ -854,7 +856,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       events.push({ event_type: 'status_changed', title, detail: statusNote || null })
       const { error: statusLogError } = await supabase.from("envelope_status_log").insert({
         envelope_id: id, from_status: current!.status, to_status: updates.status!,
-        changed_by: currentUserName, notes: statusNote || null,
+        changed_by: performedBy || currentUserName, notes: statusNote || null,
       })
       if (statusLogError) console.error("Error creating envelope_status_log entry:", statusLogError)
     }
@@ -1064,7 +1066,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       return { success: false, error: itemsError.message }
     }
 
-    // Deduct stock from origin (exit per item) using existing RPC
+    // Deduct stock from origin (exit per item) using existing RPC.
+    // Pass p_to_warehouse_id so the movement row records the destination.
     for (const item of items) {
       const { error: stockError } = await supabase.rpc("update_stock", {
         p_product_id: item.productId,
@@ -1073,7 +1076,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         p_type: "exit",
         p_reason: `Transferencia ${number} — salida`,
         p_user_name: createdBy,
-        p_to_warehouse_id: null,
+        p_to_warehouse_id: toWarehouseId,
       })
       if (stockError) {
         console.error(`Error deducting stock for product ${item.productId}:`, stockError)
@@ -1140,7 +1143,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .eq("id", transferId)
     if (headerError) { console.error("Error updating stock_transfer status:", headerError); return { success: false, error: headerError.message } }
 
-    // Add stock to destination for each item (quantity RECEIVED, not sent)
+    // Add stock to destination for each item (quantity RECEIVED, not sent).
+    // Pass p_to_warehouse_id = from_warehouse_id so the movement row records the origin.
     for (const ri of receivedItems) {
       if (ri.quantityReceived <= 0) continue
       const item = (transfer.items as StockTransferItem[]).find(i => i.id === ri.itemId)
@@ -1152,7 +1156,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         p_type: "entry",
         p_reason: `Transferencia ${transfer.number} — recepción`,
         p_user_name: receivedBy,
-        p_to_warehouse_id: null,
+        p_to_warehouse_id: transfer.from_warehouse_id,
       })
       if (stockError) console.error(`Error crediting stock for item ${ri.itemId}:`, stockError)
     }
@@ -1184,7 +1188,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     if (findError || !transfer) return { success: false, error: "No se encontró la transferencia." }
     if (transfer.status !== 'in_transit') return { success: false, error: "Solo se pueden cancelar transferencias en tránsito." }
 
-    // Return stock to origin
+    // Return stock to origin. p_to_warehouse_id = to_warehouse_id records where it came back from.
     for (const item of (transfer.items as StockTransferItem[])) {
       const { error: stockError } = await supabase.rpc("update_stock", {
         p_product_id: item.product_id,
@@ -1193,7 +1197,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         p_type: "entry",
         p_reason: `Transferencia ${transfer.number} cancelada — devolución`,
         p_user_name: cancelledBy,
-        p_to_warehouse_id: null,
+        p_to_warehouse_id: transfer.to_warehouse_id,
       })
       if (stockError) console.error(`Error returning stock for item ${item.id}:`, stockError)
     }
