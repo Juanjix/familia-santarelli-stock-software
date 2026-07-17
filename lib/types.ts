@@ -286,6 +286,7 @@ export interface Movement {
   reason: string | null
   user_name: string
   created_at: string
+  stock_transfer_id: string | null
   // Joined fields
   product?: Product
   warehouse?: Warehouse

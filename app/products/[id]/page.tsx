@@ -32,6 +32,7 @@ import {
   Pencil,
   Tag,
   ArrowLeftRight,
+  ArrowRight,
   Package,
   Barcode,
   Scale,
@@ -95,7 +96,7 @@ const pricingTypes = ["Fijo", "Base oro", "Base plata", "Base USD", "Por peso", 
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { getProductById, getStockByWarehouse, movements, warehouses, updateProduct, adjustStock, transferStock, categoryAttributes } = useInventory()
+  const { getProductById, getStockByWarehouse, movements, stockTransfers, warehouses, updateProduct, adjustStock, transferStock, categoryAttributes } = useInventory()
   
   const product = getProductById(id)
   
@@ -129,6 +130,21 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     : null
   const statusConfig = stockStatusConfig[product.stockStatus ?? "in_stock"]
   const productMovements = movements.filter((m) => (m.productId ?? m.product_id) === id).slice(0, 5)
+
+  // Transfers involving this product — one row per (transfer, item)
+  type ProductTransferRow = { transfer: typeof stockTransfers[0]; item: NonNullable<typeof stockTransfers[0]["items"]>[0]; date: string }
+  const productTransfers: ProductTransferRow[] = stockTransfers
+    .filter(st => st.status !== "cancelled" && st.items?.some(i => i.product_id === id))
+    .flatMap(st => (st.items ?? []).filter(i => i.product_id === id).map(item => ({ transfer: st, item, date: st.dispatched_at })))
+    .slice(0, 5)
+
+  // Unified history: movements + transfers, sorted by date, capped at 6
+  type HistoryEntry = { kind: "movement"; date: string } & { item: typeof productMovements[0] }
+               | { kind: "transfer"; date: string; transfer: typeof stockTransfers[0]; item: ProductTransferRow["item"] }
+  const productHistory: HistoryEntry[] = [
+    ...productMovements.map(m => ({ kind: "movement" as const, date: m.date ?? m.created_at, item: m })),
+    ...productTransfers.map(r => ({ kind: "transfer" as const, date: r.date, transfer: r.transfer, item: r.item })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 6)
 
   const openEditDialog = () => {
     setFormName(product.name)
@@ -392,38 +408,67 @@ const showSuccess = (message: string) => {
             {/* Historial de Movimientos */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-medium">Historial de Movimientos Recientes</CardTitle>
+                <CardTitle className="text-base font-medium">Historial Reciente</CardTitle>
               </CardHeader>
               <CardContent>
-                {productMovements.length > 0 ? (
+                {productHistory.length > 0 ? (
                   <div className="space-y-4">
-                    {productMovements.map((movement) => {
-                      const { Icon, colorClass } = getMovementIcon(movement.type)
-                      const cfg = getMovementConfig(movement.type)
-                      return (
-                        <div key={movement.id} className="flex items-center gap-4">
-                          <div className={`rounded-lg bg-secondary p-2 ${colorClass}`}>
-                            <Icon className="h-4 w-4" />
+                    {productHistory.map((entry) => {
+                      if (entry.kind === "movement") {
+                        const movement = entry.item
+                        const { Icon, colorClass } = getMovementIcon(movement.type)
+                        const cfg = getMovementConfig(movement.type)
+                        return (
+                          <div key={`m-${movement.id}`} className="flex items-center gap-4">
+                            <div className={`rounded-lg bg-secondary p-2 ${colorClass}`}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">
+                                {cfg?.sign === "+" ? "+" : cfg?.sign === "-" ? "-" : "±"}{movement.quantity} unidades
+                                {" · "}{cfg?.label ?? movement.type}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {movement.fromWarehouse && `Desde: ${movement.fromWarehouse}`}
+                                {movement.fromWarehouse && movement.toWarehouse && " - "}
+                                {movement.toWarehouse && `Hacia: ${movement.toWarehouse}`}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">
+                                <RelativeTime date={entry.date} />
+                              </p>
+                              <p className="text-xs text-muted-foreground">{movement.user}</p>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">
-                              {cfg?.sign === "+" ? "+" : cfg?.sign === "-" ? "-" : "±"}{movement.quantity} unidades
-                              {" · "}{cfg?.label ?? movement.type}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {movement.fromWarehouse && `Desde: ${movement.fromWarehouse}`}
-                              {movement.fromWarehouse && movement.toWarehouse && " - "}
-                              {movement.toWarehouse && `Hacia: ${movement.toWarehouse}`}
-                            </p>
+                        )
+                      } else {
+                        const { transfer, item } = entry
+                        return (
+                          <div key={`t-${transfer.id}-${item.id}`} className="flex items-center gap-4">
+                            <div className="rounded-lg bg-secondary p-2 text-blue-500">
+                              <ArrowLeftRight className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">
+                                {item.quantity_received ?? item.quantity_sent} unidades · Transferencia
+                              </p>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                {transfer.from_warehouse?.name}
+                                <ArrowRight className="h-3 w-3 inline" />
+                                {transfer.to_warehouse?.name}
+                                <span className="ml-1 text-muted-foreground/60">{transfer.number}</span>
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">
+                                <RelativeTime date={entry.date} />
+                              </p>
+                              <p className="text-xs text-muted-foreground">{transfer.created_by}</p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs text-muted-foreground">
-                              <RelativeTime date={movement.date ?? movement.created_at} />
-                            </p>
-                            <p className="text-xs text-muted-foreground">{movement.user}</p>
-                          </div>
-                        </div>
-                      )
+                        )
+                      }
                     })}
                   </div>
                 ) : (

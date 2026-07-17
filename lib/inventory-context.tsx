@@ -129,6 +129,7 @@ interface InventoryContextType {
   sendTransfer: (envelopeId: string, fromWarehouseId: string | null, toWarehouseId: string) => Promise<{ success: boolean; error?: string }>
   confirmTransferReceipt: (envelopeId: string) => Promise<{ success: boolean; error?: string }>
   // ── Stock Transfers ───────────────────────────────────────
+  stockTransfers: StockTransfer[]
   createAndDispatchTransfer: (
     fromWarehouseId: string,
     toWarehouseId: string,
@@ -142,6 +143,7 @@ interface InventoryContextType {
   cancelStockTransfer: (transferId: string) => Promise<{ success: boolean; error?: string }>
   fetchStockTransfers: (filters?: { status?: StockTransfer['status'] }) => Promise<StockTransfer[]>
   fetchStockTransferEvents: (transferId: string) => Promise<StockTransferEvent[]>
+  fetchMovementsForTransfer: (transferId: string) => Promise<Movement[]>
 }
 
 const InventoryContext = createContext<InventoryContextType | null>(null)
@@ -163,6 +165,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [jewelers, setJewelers] = useState<Jeweler[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [envelopeSubtypes, setEnvelopeSubtypes] = useState<EnvelopeSubtype[]>([])
+  const [stockTransfers, setStockTransfers] = useState<StockTransfer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -174,7 +177,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     
     try {
       // Fetch all data in parallel
-      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes, categoryAttributesRes, customersRes, jewelersRes, employeesRes, envelopeSubtypesRes] = await Promise.all([
+      const [productsRes, warehousesRes, movementsRes, couponsRes, stockRes, suppliersRes, categoriesRes, brandsRes, categoryAttributesRes, customersRes, jewelersRes, employeesRes, envelopeSubtypesRes, stockTransfersRes] = await Promise.all([
         supabase.from("products").select(`
           *,
           suppliers(id, name, contact, price_group, coefficient, created_at)
@@ -185,7 +188,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           products(name),
           warehouses:warehouse_id(name),
           to_warehouses:to_warehouse_id(name)
-        `).order("created_at", { ascending: false }).limit(100),
+        `).is("stock_transfer_id", null).order("created_at", { ascending: false }).limit(100),
         supabase.from("coupons").select(`
           *,
           original_products:original_product_id(name)
@@ -204,6 +207,15 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         supabase.from("jewelers").select("*").order("name"),
         supabase.from("employees").select("*").order("name"),
         supabase.from("envelope_subtypes").select("*").order("product_type").order("sort_order"),
+        supabase.from("stock_transfers").select(`
+          *,
+          from_warehouse:warehouses!from_warehouse_id(id, name),
+          to_warehouse:warehouses!to_warehouse_id(id, name),
+          items:stock_transfer_items(
+            id, transfer_id, product_id, quantity_sent, quantity_received, created_at,
+            product:products(id, sku, name, category)
+          )
+        `).neq("status", "cancelled").order("dispatched_at", { ascending: false }).limit(200),
       ])
 
       if (productsRes.error) throw productsRes.error
@@ -228,6 +240,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setCategories(categoriesRes.data || [])
       setBrands(brandsRes.data || [])
       setCategoryAttributes(categoryAttributesRes.data || [])
+      setStockTransfers((stockTransfersRes.data || []) as StockTransfer[])
       setCustomers(customersRes.data || [])
       setJewelers(jewelersRes.data || [])
       setEmployees(employeesRes.data || [])
@@ -1022,6 +1035,16 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     return (data || []) as StockTransfer[]
   }, [supabase])
 
+  const fetchMovementsForTransfer = useCallback(async (transferId: string): Promise<Movement[]> => {
+    const { data, error } = await supabase
+      .from("movements")
+      .select(`*, products(name), warehouses:warehouse_id(name), to_warehouses:to_warehouse_id(name)`)
+      .eq("stock_transfer_id", transferId)
+      .order("created_at")
+    if (error) { console.error("Error fetching transfer movements:", error); return [] }
+    return (data || []).map(normalizeMovement)
+  }, [supabase])
+
   const fetchStockTransferEvents = useCallback(async (transferId: string): Promise<StockTransferEvent[]> => {
     const { data, error } = await supabase
       .from("stock_transfer_events")
@@ -1067,7 +1090,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
 
     // Deduct stock from origin (exit per item) using existing RPC.
-    // Pass p_to_warehouse_id so the movement row records the destination.
+    // Pass p_to_warehouse_id + p_stock_transfer_id so movements are linked to this transfer.
     for (const item of items) {
       const { error: stockError } = await supabase.rpc("update_stock", {
         p_product_id: item.productId,
@@ -1077,6 +1100,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         p_reason: `Transferencia ${number} — salida`,
         p_user_name: createdBy,
         p_to_warehouse_id: toWarehouseId,
+        p_stock_transfer_id: transfer.id,
       })
       if (stockError) {
         console.error(`Error deducting stock for product ${item.productId}:`, stockError)
@@ -1144,7 +1168,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     if (headerError) { console.error("Error updating stock_transfer status:", headerError); return { success: false, error: headerError.message } }
 
     // Add stock to destination for each item (quantity RECEIVED, not sent).
-    // Pass p_to_warehouse_id = from_warehouse_id so the movement row records the origin.
+    // Pass p_to_warehouse_id + p_stock_transfer_id so movements are linked to this transfer.
     for (const ri of receivedItems) {
       if (ri.quantityReceived <= 0) continue
       const item = (transfer.items as StockTransferItem[]).find(i => i.id === ri.itemId)
@@ -1157,6 +1181,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         p_reason: `Transferencia ${transfer.number} — recepción`,
         p_user_name: receivedBy,
         p_to_warehouse_id: transfer.from_warehouse_id,
+        p_stock_transfer_id: transferId,
       })
       if (stockError) console.error(`Error crediting stock for item ${ri.itemId}:`, stockError)
     }
@@ -1283,6 +1308,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       cancelStockTransfer,
       fetchStockTransfers,
       fetchStockTransferEvents,
+      fetchMovementsForTransfer,
+      stockTransfers,
     }}>
       {children}
     </InventoryContext.Provider>

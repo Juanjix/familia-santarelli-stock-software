@@ -114,6 +114,7 @@ export function getStockByWarehouse(productId: string): StockByWarehouse[] {
 const mkMovement = (o: { id: string; productId: string; productName: string; type: Movement["type"]; quantity: number; fromWarehouse?: string; toWarehouse?: string; date: string; user: string; notes?: string }): Movement => ({
   id: o.id, type: o.type, quantity: o.quantity,
   product_id: o.productId, warehouse_id: null, to_warehouse_id: null,
+  stock_transfer_id: null,
   reason: o.notes ?? null, user_name: o.user, created_at: o.date,
   productId: o.productId, productName: o.productName,
   fromWarehouse: o.fromWarehouse, toWarehouse: o.toWarehouse,
