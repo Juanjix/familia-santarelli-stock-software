@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import {
   Select,
@@ -34,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import type { StockTransfer, StockTransferEvent, StockTransferItem } from "@/lib/types"
+import type { Product, StockTransfer, StockTransferEvent, StockTransferItem } from "@/lib/types"
 import {
   ArrowRight,
   CheckCircle2,
@@ -49,6 +50,10 @@ import {
   TruckIcon,
 } from "lucide-react"
 import { ProductSearchCombobox } from "@/components/products/product-search-combobox"
+import {
+  ProductScannerInput,
+  type ProductScannerInputHandle,
+} from "@/components/products/product-scanner-input"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -82,13 +87,6 @@ const STATUS_LABEL: Record<StockTransfer['status'], string> = {
   cancelled: "Cancelada",
 }
 
-const STATUS_VARIANT: Record<StockTransfer['status'], "default" | "secondary" | "destructive" | "outline"> = {
-  in_transit: "default",
-  completed: "secondary",
-  with_differences: "destructive",
-  cancelled: "outline",
-}
-
 const STATUS_CLASS: Record<StockTransfer['status'], string> = {
   in_transit: "bg-blue-100 text-blue-800 border-blue-200",
   completed: "bg-green-100 text-green-800 border-green-200",
@@ -111,7 +109,7 @@ function TransferTimeline({ events }: { events: StockTransferEvent[] }) {
   }
   return (
     <ol className="relative space-y-0 pl-5 before:absolute before:left-2 before:top-0 before:bottom-0 before:w-px before:bg-border">
-      {events.map((ev, i) => (
+      {events.map((ev) => (
         <li key={ev.id} className="relative pb-4 last:pb-0">
           <span className="absolute -left-[13px] top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background border border-border text-muted-foreground">
             {EVENT_ICONS[ev.event_type] ?? <Clock className="h-3 w-3" />}
@@ -146,9 +144,10 @@ function NewTransferPanel({
   const { products, warehouses, getStockByWarehouse, createAndDispatchTransfer } = useInventory()
   const [fromWarehouse, setFromWarehouse] = useState("")
   const [toWarehouse, setToWarehouse] = useState("")
-  const [lines, setLines] = useState<TransferLine[]>([{ productId: "", quantity: 1 }])
+  const [lines, setLines] = useState<TransferLine[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const scannerRef = useRef<ProductScannerInputHandle>(null)
 
   const activeWarehouses = warehouses.filter(w => w.is_active !== false)
 
@@ -165,7 +164,22 @@ function NewTransferPanel({
     return getStockByWarehouse(productId).find(s => s.warehouseId === fromWarehouse)?.quantity ?? 0
   }
 
-  function addLine() {
+  // Scanner adds a new line or increments quantity if the product is already in the list.
+  function handleScanProduct(product: Product) {
+    const existing = lines.findIndex(l => l.productId === product.id)
+    if (existing >= 0) {
+      const avail = getAvailableQty(product.id)
+      setLines(prev => prev.map((l, i) =>
+        i === existing ? { ...l, quantity: Math.min(l.quantity + 1, avail) } : l
+      ))
+    } else {
+      setLines(prev => [...prev, { productId: product.id, quantity: 1 }])
+    }
+    // Return focus to scanner after updating state.
+    setTimeout(() => scannerRef.current?.focus(), 0)
+  }
+
+  function addEmptyLine() {
     setLines(prev => [...prev, { productId: "", quantity: 1 }])
   }
 
@@ -213,7 +227,7 @@ function NewTransferPanel({
         <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
           <Field>
             <FieldLabel>Origen</FieldLabel>
-            <Select value={fromWarehouse} onValueChange={v => { setFromWarehouse(v); setLines([{ productId: "", quantity: 1 }]) }}>
+            <Select value={fromWarehouse} onValueChange={v => { setFromWarehouse(v); setLines([]) }}>
               <SelectTrigger>
                 <SelectValue placeholder="Depósito…" />
               </SelectTrigger>
@@ -243,11 +257,42 @@ function NewTransferPanel({
         {/* Productos */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <FieldLabel>Productos</FieldLabel>
-            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={addLine} disabled={!fromWarehouse}>
+            <FieldLabel>
+              Productos
+              {lines.length > 0 && (
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                  ({lines.length} línea{lines.length !== 1 ? 's' : ''})
+                </span>
+              )}
+            </FieldLabel>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={addEmptyLine}
+              disabled={!fromWarehouse}
+            >
               <Plus className="h-3 w-3" /> Agregar
             </Button>
           </div>
+
+          {/* Scanner — only active when origin is set */}
+          <ProductScannerInput
+            ref={scannerRef}
+            products={productsInOrigin}
+            onResolve={handleScanProduct}
+            onNotFound={() => {}}
+            autoFocus={false}
+            placeholder={fromWarehouse ? "Escanear código de barras o SKU…" : "Seleccioná un origen primero"}
+            className={cn("mb-3", !fromWarehouse && "pointer-events-none opacity-50")}
+          />
+
+          {lines.length === 0 && fromWarehouse && (
+            <p className="text-xs text-muted-foreground text-center py-3 border border-dashed border-border rounded-md">
+              Escaneá un producto o usá "Agregar" para carga manual
+            </p>
+          )}
+
           <div className="space-y-2">
             {lines.map((line, idx) => {
               const available = getAvailableQty(line.productId)
@@ -257,7 +302,20 @@ function NewTransferPanel({
                     <ProductSearchCombobox
                       products={productsInOrigin}
                       selectedProductId={line.productId}
-                      onSelect={v => updateLine(idx, "productId", v)}
+                      onSelect={v => {
+                        // If the selected product already exists on another line, merge.
+                        const existing = lines.findIndex((l, i) => i !== idx && l.productId === v)
+                        if (existing >= 0) {
+                          setLines(prev => {
+                            const merged = prev.map((l, i) =>
+                              i === existing ? { ...l, quantity: l.quantity + prev[idx].quantity } : l
+                            )
+                            return merged.filter((_, i) => i !== idx)
+                          })
+                        } else {
+                          updateLine(idx, "productId", v)
+                        }
+                      }}
                       getStock={getAvailableQty}
                       disabled={!fromWarehouse}
                       disabledPlaceholder="Seleccioná un origen primero"
@@ -272,11 +330,9 @@ function NewTransferPanel({
                     onChange={e => updateLine(idx, "quantity", Math.max(1, parseInt(e.target.value) || 1))}
                     className="h-8 w-16 text-xs text-center"
                   />
-                  {lines.length > 1 && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeLine(idx)}>
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  )}
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeLine(idx)}>
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
                 </div>
               )
             })}
@@ -292,14 +348,14 @@ function NewTransferPanel({
 
       <div className="pt-4 border-t border-border mt-4">
         <Button className="w-full" disabled={!isValid || saving} onClick={handleSubmit}>
-          {saving ? "Despachando…" : "Despachar Transferencia"}
+          {saving ? "Despachando…" : `Despachar Transferencia${lines.length > 0 ? ` (${lines.reduce((s, l) => s + l.quantity, 0)} unidades)` : ""}`}
         </Button>
       </div>
     </div>
   )
 }
 
-// ── Confirm Receipt Dialog ────────────────────────────────────────────────────
+// ── Assisted Receipt Dialog ───────────────────────────────────────────────────
 
 function ConfirmReceiptDialog({
   transfer,
@@ -311,19 +367,69 @@ function ConfirmReceiptDialog({
   onConfirmed: () => void
 }) {
   const { confirmStockTransfer } = useInventory()
-  const [quantities, setQuantities] = useState<Record<string, number>>(() => {
+  const scannerRef = useRef<ProductScannerInputHandle>(null)
+
+  // received[item.id] = units scanned so far
+  const [received, setReceived] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {}
     for (const item of transfer.items ?? []) {
-      init[item.id] = item.quantity_sent
+      init[item.id] = 0
     }
     return init
   })
   const [incidentNotes, setIncidentNotes] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [scanError, setScanError] = useState<string | null>(null)
 
-  const hasDifferences = (transfer.items ?? []).some(item => (quantities[item.id] ?? 0) < item.quantity_sent)
-  const isValid = (transfer.items ?? []).every(item => (quantities[item.id] ?? -1) >= 0) && (!hasDifferences || incidentNotes.trim())
+  // product_id → item mapping for scanner lookup
+  const productToItem = useMemo(() => {
+    const map: Record<string, StockTransferItem> = {}
+    for (const item of transfer.items ?? []) {
+      if (item.product_id) map[item.product_id] = item
+    }
+    return map
+  }, [transfer.items])
+
+  // Only products that belong to this transfer — scanner rejects anything else
+  const productsInTransfer = useMemo(
+    () => (transfer.items ?? []).map(i => i.product).filter(Boolean) as Product[],
+    [transfer.items]
+  )
+
+  const totalSent = (transfer.items ?? []).reduce((s, i) => s + i.quantity_sent, 0)
+  const totalReceived = Object.values(received).reduce((s, v) => s + v, 0)
+  const progressPct = totalSent > 0 ? Math.round((totalReceived / totalSent) * 100) : 0
+
+  function handleScan(product: Product) {
+    setScanError(null)
+    const item = productToItem[product.id]
+    if (!item) {
+      // Should not happen since scanner is restricted to productsInTransfer,
+      // but guard defensively.
+      setScanError("Este producto no pertenece a esta transferencia")
+      return
+    }
+    const current = received[item.id] ?? 0
+    if (current >= item.quantity_sent) {
+      setScanError(`Ya recibiste todas las unidades de "${product.name}"`)
+      return
+    }
+    setReceived(prev => ({ ...prev, [item.id]: current + 1 }))
+    setTimeout(() => scannerRef.current?.focus(), 0)
+  }
+
+  function adjustReceived(itemId: string, delta: number, max: number) {
+    setScanError(null)
+    setReceived(prev => ({
+      ...prev,
+      [itemId]: Math.max(0, Math.min(max, (prev[itemId] ?? 0) + delta)),
+    }))
+  }
+
+  const hasDifferences = (transfer.items ?? []).some(item => (received[item.id] ?? 0) < item.quantity_sent)
+  const isComplete = totalReceived === totalSent
+  const isValid = totalReceived > 0 && (!hasDifferences || incidentNotes.trim())
 
   async function handleConfirm() {
     if (!isValid) return
@@ -332,7 +438,7 @@ function ConfirmReceiptDialog({
     try {
       const result = await confirmStockTransfer(
         transfer.id,
-        (transfer.items ?? []).map(item => ({ itemId: item.id, quantityReceived: quantities[item.id] ?? 0 })),
+        (transfer.items ?? []).map(item => ({ itemId: item.id, quantityReceived: received[item.id] ?? 0 })),
         hasDifferences ? incidentNotes : undefined
       )
       if (!result.success) { setError(result.error || "No se pudo confirmar la recepción. Revisá tu conexión e intentá nuevamente."); return }
@@ -348,49 +454,109 @@ function ConfirmReceiptDialog({
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Confirmar Recepción — {transfer.number}</DialogTitle>
+          <DialogTitle>Recepción asistida — {transfer.number}</DialogTitle>
           <DialogDescription>
-            Verificá cada producto y corregí la cantidad si es necesario.
+            Escaneá cada producto recibido. El sistema los marcará automáticamente.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Items */}
+          {/* Scanner */}
+          <ProductScannerInput
+            ref={scannerRef}
+            products={productsInTransfer}
+            onResolve={handleScan}
+            onNotFound={() => setScanError("Este producto no pertenece a esta transferencia")}
+            placeholder="Escanear código de barras o SKU…"
+          />
+
+          {scanError && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {scanError}
+            </div>
+          )}
+
+          {/* Progress bar */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Progreso de recepción</span>
+              <span className={cn("font-semibold tabular-nums", isComplete ? "text-green-700 dark:text-green-400" : "text-foreground")}>
+                {totalReceived} / {totalSent} recibidos
+              </span>
+            </div>
+            <Progress value={progressPct} className="h-2" />
+          </div>
+
+          {/* Items table */}
           <div className="rounded-md border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Producto</TableHead>
-                  <TableHead className="text-center w-20">Enviado</TableHead>
-                  <TableHead className="text-center w-24">Recibido</TableHead>
+                  <TableHead className="text-center w-14">Env.</TableHead>
+                  <TableHead className="text-center w-28">Recibido</TableHead>
+                  <TableHead className="w-8" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(transfer.items ?? []).map(item => {
-                  const received = quantities[item.id] ?? item.quantity_sent
-                  const diff = received - item.quantity_sent
+                  const rec = received[item.id] ?? 0
+                  const complete = rec >= item.quantity_sent
+                  const partial = rec > 0 && !complete
+                  const pending = rec === 0
                   return (
-                    <TableRow key={item.id}>
-                      <TableCell className="text-sm">
+                    <TableRow
+                      key={item.id}
+                      className={cn(
+                        complete && "bg-green-50/60 dark:bg-green-950/20",
+                        partial && "bg-amber-50/60 dark:bg-amber-950/20",
+                      )}
+                    >
+                      <TableCell className="text-sm font-medium">
                         {item.product?.name ?? "—"}
+                        <div className="text-xs text-muted-foreground font-normal font-mono">
+                          {item.product?.sku}
+                        </div>
                       </TableCell>
                       <TableCell className="text-center text-sm text-muted-foreground">
                         {item.quantity_sent}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={item.quantity_sent}
-                            value={received}
-                            onChange={e => setQuantities(prev => ({ ...prev, [item.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                            className={cn("h-7 w-14 text-center text-sm", diff < 0 && "border-destructive text-destructive")}
-                          />
-                          {diff < 0 && (
-                            <span className="text-xs text-destructive font-medium">{diff}</span>
-                          )}
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => adjustReceived(item.id, -1, item.quantity_sent)}
+                            className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted transition-colors text-sm leading-none"
+                            aria-label="Reducir"
+                          >
+                            −
+                          </button>
+                          <span className={cn(
+                            "text-sm font-semibold w-7 text-center tabular-nums",
+                            complete && "text-green-700 dark:text-green-400",
+                            pending && "text-muted-foreground",
+                          )}>
+                            {rec}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => adjustReceived(item.id, +1, item.quantity_sent)}
+                            className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted transition-colors text-sm leading-none"
+                            aria-label="Aumentar"
+                          >
+                            +
+                          </button>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {complete ? (
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mx-auto" />
+                        ) : partial ? (
+                          <AlertTriangle className="h-4 w-4 text-amber-500 mx-auto" />
+                        ) : (
+                          <Clock className="h-4 w-4 text-muted-foreground/40 mx-auto" />
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -400,11 +566,11 @@ function ConfirmReceiptDialog({
           </div>
 
           {/* Differences alert */}
-          {hasDifferences && (
+          {hasDifferences && totalReceived > 0 && (
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-2">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                <p className="text-sm text-destructive font-medium">Se detectaron diferencias</p>
+                <p className="text-sm text-destructive font-medium">Se detectaron diferencias en la recepción</p>
               </div>
               <Field>
                 <FieldLabel>Motivo de la diferencia *</FieldLabel>
@@ -709,6 +875,7 @@ export default function TransfersPage() {
                 {filtered.map(t => {
                   const isSelected = typeof panel === 'object' && panel?.type === 'detail' && panel.transfer.id === t.id
                   const totalItems = (t.items ?? []).reduce((s, i) => s + i.quantity_sent, 0)
+                  const productCount = (t.items ?? []).length
                   return (
                     <button
                       key={t.id}
@@ -732,7 +899,7 @@ export default function TransfersPage() {
                             <span>{t.to_warehouse?.name}</span>
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                            <span>{totalItems} unidad{totalItems !== 1 ? 'es' : ''}</span>
+                            <span>{productCount} producto{productCount !== 1 ? 's' : ''} · {totalItems} unidad{totalItems !== 1 ? 'es' : ''}</span>
                             <span>·</span>
                             <span>{t.created_by}</span>
                             <span>·</span>
