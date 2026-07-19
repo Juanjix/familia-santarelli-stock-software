@@ -228,12 +228,24 @@ GRANT EXECUTE ON FUNCTION void_sale(UUID, TEXT) TO authenticated;
 ALTER TABLE sales
   DROP CONSTRAINT IF EXISTS sales_voided_by_fkey;
 
--- Limpiar valores históricos incompatibles con la nueva FK.
--- Un employee_id no es un app_users.id válido.
-UPDATE sales
-SET voided_by = NULL
-WHERE voided_by IS NOT NULL
-  AND voided_by NOT IN (SELECT id FROM app_users);
+-- Normalizar referencias incompatibles con la nueva FK.
+-- NOT EXISTS en lugar de NOT IN: más robusto frente a NULLs y expresa
+-- correctamente la intención ("no existe una fila relacionada en app_users").
+-- Reporta la cantidad de filas afectadas para auditoría de la migración.
+DO $$
+DECLARE
+  v_rows INTEGER;
+BEGIN
+  UPDATE sales s
+  SET voided_by = NULL
+  WHERE s.voided_by IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM app_users au WHERE au.id = s.voided_by
+    );
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RAISE NOTICE 'Sales normalizadas (voided_by → NULL): %', v_rows;
+END $$;
 
 ALTER TABLE sales
   ADD CONSTRAINT sales_voided_by_app_users_fkey
@@ -265,3 +277,9 @@ WHERE tc.table_name = 'sales'
 -- 3. void_sale debe tener exactamente 2 parámetros
 SELECT proname, pg_get_function_identity_arguments(oid) AS args
 FROM pg_proc WHERE proname = 'void_sale';
+
+-- 4. Confirmación post-migración: debe ser 0
+SELECT COUNT(*) AS referencias_invalidas
+FROM sales s
+WHERE s.voided_by IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM app_users au WHERE au.id = s.voided_by);
