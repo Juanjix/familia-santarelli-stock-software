@@ -216,7 +216,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
           to_warehouse:warehouses!to_warehouse_id(id, name),
           items:stock_transfer_items(
             id, transfer_id, product_id, quantity_sent, quantity_received, created_at,
-            product:products(id, sku, name, category)
+            product:products(id, sku, name, barcode, category)
           )
         `).neq("status", "cancelled").order("dispatched_at", { ascending: false }).limit(200),
       ])
@@ -1068,7 +1068,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     to_warehouse:warehouses!to_warehouse_id(id, name),
     items:stock_transfer_items(
       id, transfer_id, product_id, quantity_sent, quantity_received, created_at,
-      product:products(id, sku, name, category)
+      product:products(id, sku, name, barcode, category)
     )
   `
 

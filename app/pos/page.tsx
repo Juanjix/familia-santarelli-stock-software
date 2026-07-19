@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from "react"
 import { useRouter } from "next/navigation"
 import {
   ShoppingCart,
@@ -23,6 +23,7 @@ import {
   AlertCircle,
   Undo2,
   CornerDownLeft,
+  CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -149,6 +150,36 @@ function printPOSTicket(data: PrintTicketData) {
 
 function escHtml(s: string) {
   return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")
+}
+
+// ── Web Audio API — beeps de feedback ─────────────────────────────────────────
+
+function playBeep(type: "success" | "error") {
+  try {
+    const ctx = new AudioContext()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    if (type === "success") {
+      osc.frequency.value = 880
+      osc.type = "sine"
+      gain.gain.setValueAtTime(0.08, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.1)
+    } else {
+      osc.frequency.value = 200
+      osc.type = "sawtooth"
+      gain.gain.setValueAtTime(0.12, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.25)
+    }
+    osc.onended = () => ctx.close()
+  } catch {
+    // AudioContext no disponible (SSR, tests) — falla silenciosamente
+  }
 }
 
 // ── Success screen ─────────────────────────────────────────────────────────────
@@ -322,20 +353,22 @@ function CustomerDialog({
 // of what had focus before because it is always in the DOM and auto-focuses on
 // mount. Typing shows an inline dropdown; Enter on an exact code auto-adds.
 
-function POSSearchBar({
-  products,
-  getStock,
-  onSelect,
-}: {
-  products: Product[]
-  getStock: (id: string) => number
-  onSelect: (product: Product) => void
-}) {
+const POSSearchBar = forwardRef<
+  { focus: () => void },
+  {
+    products: Product[]
+    getStock: (id: string) => number
+    onSelect: (product: Product) => void
+    onFocusChange: (active: boolean) => void
+    onNotFound: () => void
+  }
+>(function POSSearchBar({ products, getStock, onSelect, onFocusChange, onNotFound }, ref) {
   const [query, setQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
   const [notFound, setNotFound] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }))
   const { resolve, rank } = useProductSearch(products)
 
   const results = useMemo(
@@ -377,6 +410,7 @@ function POSSearchBar({
     if (results.length === 1) { add(results[0]); return }
 
     setNotFound(true)
+    onNotFound()
     if (results.length > 1) setShowDropdown(true)
   }
 
@@ -389,7 +423,8 @@ function POSSearchBar({
             ref={inputRef}
             value={query}
             onChange={e => { setQuery(e.target.value); setNotFound(false) }}
-            onFocus={() => { if (results.length > 0) setShowDropdown(true) }}
+            onFocus={() => { if (results.length > 0) setShowDropdown(true); onFocusChange(true) }}
+            onBlur={() => onFocusChange(false)}
             placeholder="Buscar por nombre, SKU o escanear código..."
             className="pl-9 pr-8 h-10 text-sm"
             autoFocus
@@ -443,7 +478,7 @@ function POSSearchBar({
       )}
     </div>
   )
-}
+})
 
 // ── Main POS page ──────────────────────────────────────────────────────────────
 
@@ -474,6 +509,13 @@ export default function POSPage() {
   const [successPrintData, setSuccessPrintData] = useState<PrintTicketData | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [lastAdded, setLastAdded] = useState<{ productId: string; wasNew: boolean } | null>(null)
+  const [scannerActive, setScannerActive] = useState(true)
+  const [lastScannedFeedback, setLastScannedFeedback] = useState<{ name: string; stock: number } | null>(null)
+  const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null)
+  const scannerRef = useRef<{ focus: () => void }>(null)
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const hasPriceZero = items.some(it => it.unit_price === 0)
 
@@ -551,10 +593,31 @@ export default function POSPage() {
 
   // Wrap addOrIncrement to track the last scanned product for undo
   const addWithUndo = useCallback((product: Product) => {
-    const wasNew = !items.find(i => i.product_id === product.id)
+    const existingItem = items.find(i => i.product_id === product.id)
+    const wasNew = !existingItem
+    const existingQty = existingItem?.quantity ?? 0
     addOrIncrementProduct(product)
     setLastAdded({ productId: product.id, wasNew })
-  }, [items, addOrIncrementProduct])
+
+    // Feedback temporal: nombre del producto + stock restante estimado
+    const whStock = getWarehouseStock(product.id)
+    const remainingStock = Math.max(0, whStock - (existingQty + 1))
+    setLastScannedFeedback({ name: product.name, stock: remainingStock })
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current)
+    feedbackTimerRef.current = setTimeout(() => setLastScannedFeedback(null), 800)
+
+    // Highlight de la fila recién agregada
+    setHighlightedProductId(product.id)
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = setTimeout(() => setHighlightedProductId(null), 500)
+
+    // Auto-scroll a la fila
+    setTimeout(() => {
+      itemRefs.current[product.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }, 50)
+
+    playBeep("success")
+  }, [items, addOrIncrementProduct, getWarehouseStock])
 
   const handleUndo = useCallback(() => {
     if (!lastAdded) return
@@ -577,6 +640,10 @@ export default function POSPage() {
       if (ctrl && e.key === "Enter") {
         e.preventDefault()
         handleConfirmRef.current?.()
+      }
+      if (e.key === "F8") {
+        e.preventDefault()
+        scannerRef.current?.focus()
       }
       if (ctrl && e.key === "z") {
         // Only intercept when focus is NOT inside an editable field (let the browser handle text undo)
@@ -716,7 +783,14 @@ export default function POSPage() {
         <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <ShoppingCart className="h-5 w-5 text-muted-foreground shrink-0" />
-            <span className="font-semibold text-sm shrink-0">Punto de Venta</span>
+            <span className="font-semibold text-sm shrink-0">
+              {isCartEmpty
+                ? "Punto de Venta"
+                : (() => {
+                    const qty = items.reduce((s, i) => s + i.quantity, 0)
+                    return `${qty} artículo${qty !== 1 ? "s" : ""} · ${fmtARS(total)}`
+                  })()}
+            </span>
             <span className="text-muted-foreground/50 shrink-0">·</span>
             <span className="text-xs text-muted-foreground truncate">
               {employees.find(e => e.id === sellerId)?.name}
@@ -745,10 +819,43 @@ export default function POSPage() {
         {/* Buscador / escáner de producto */}
         <div className="px-4 py-3 border-b shrink-0 space-y-2">
           <POSSearchBar
+            ref={scannerRef}
             products={activeProducts}
             getStock={getStock}
             onSelect={addWithUndo}
+            onFocusChange={setScannerActive}
+            onNotFound={() => playBeep("error")}
           />
+
+          {/* Estado del escáner */}
+          {scannerActive ? (
+            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+              <span className="font-medium">Escáner listo</span>
+              <span className="text-muted-foreground">· Escaneá el siguiente producto</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => scannerRef.current?.focus()}
+              className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+            >
+              <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+              <span className="font-medium">Escáner inactivo</span>
+              <span className="text-muted-foreground">· Hacé clic aquí o presioná F8 para activarlo</span>
+            </button>
+          )}
+
+          {/* Feedback temporal del último producto escaneado */}
+          {lastScannedFeedback && (
+            <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="font-medium truncate">{lastScannedFeedback.name}</span>
+              <span className="text-muted-foreground shrink-0">· Stock restante: {lastScannedFeedback.stock}</span>
+            </div>
+          )}
+
+          {/* Deshacer último scan */}
           {lastAdded && (
             <button
               onClick={handleUndo}
@@ -779,10 +886,12 @@ export default function POSPage() {
                 return (
                   <div
                     key={item.product_id}
+                    ref={el => { itemRefs.current[item.product_id] = el }}
                     className={cn(
-                      "rounded-lg border bg-card p-3",
+                      "rounded-lg border bg-card p-3 transition-colors duration-300",
                       hasNoPrice && "border-amber-500/50 bg-amber-500/5",
-                      isOverstock && !hasNoPrice && "border-destructive/50 bg-destructive/5"
+                      isOverstock && !hasNoPrice && "border-destructive/50 bg-destructive/5",
+                      highlightedProductId === item.product_id && !hasNoPrice && !isOverstock && "border-green-500/50 bg-green-500/5"
                     )}
                   >
                     <div className="flex gap-3">
