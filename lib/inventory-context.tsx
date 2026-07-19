@@ -77,6 +77,7 @@ interface InventoryContextType {
   refreshData: () => Promise<void>
   refreshMovements: () => Promise<void>
   refreshStock: () => Promise<void>
+  refreshAfterInventoryChange: () => Promise<void>
   addProduct: (product: Partial<Product>) => Promise<Product | null>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
@@ -312,6 +313,15 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       return { ...p, total_stock: total, totalStock: total }
     }))
   }, [supabase])
+
+  // Single entry point for post-mutation synchronization.
+  // All inventory operations (sale, void, adjustment, transfer, entry/exit)
+  // call this instead of refreshMovements/refreshStock directly.
+  // Adding Dashboard stats or Supabase Realtime in future sprints means
+  // updating only this function, not every callsite.
+  const refreshAfterInventoryChange = useCallback(async () => {
+    await Promise.all([refreshMovements(), refreshStock()])
+  }, [refreshMovements, refreshStock])
 
   const getProductById = useCallback((id: string) => {
     return products.find(p => p.id === id)
@@ -1301,6 +1311,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       refreshData,
       refreshMovements,
       refreshStock,
+      refreshAfterInventoryChange,
       addProduct,
       updateProduct,
       deleteProduct,

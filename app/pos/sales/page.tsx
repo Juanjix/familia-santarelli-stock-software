@@ -271,7 +271,7 @@ function isStaleDraft(sale: Sale): boolean {
 
 export default function SalesHistoryPage() {
   const { fetchSales, voidSale, fetchEmployees } = usePOS()
-  const { refreshMovements, refreshStock } = useInventory()
+  const { refreshAfterInventoryChange } = useInventory()
   const { user } = useAuth()
 
   const [sales, setSales] = useState<Sale[]>([])
@@ -327,7 +327,7 @@ export default function SalesHistoryPage() {
       // Refresh only the slices affected by void_sale: movements (new
       // sale_reversal entry) and stock (quantities restored to warehouse).
       // Runs in parallel in the background — UI already shows the change.
-      Promise.all([refreshMovements(), refreshStock()])
+      refreshAfterInventoryChange()
     } else {
       // Revert optimistic update and re-open the dialog so the operator can retry.
       setSales(prev => prev.map(s =>
