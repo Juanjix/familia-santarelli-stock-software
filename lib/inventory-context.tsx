@@ -75,6 +75,8 @@ interface InventoryContextType {
   loading: boolean
   error: string | null
   refreshData: () => Promise<void>
+  refreshMovements: () => Promise<void>
+  refreshStock: () => Promise<void>
   addProduct: (product: Partial<Product>) => Promise<Product | null>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
@@ -272,6 +274,44 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshData()
   }, [refreshData])
+
+  // Targeted refresh — reloads only the affected slice without touching the
+  // rest of the context. Called after mutations that affect movements or stock
+  // (e.g. void_sale) without triggering the full 14-query refreshData().
+  const refreshMovements = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("movements")
+      .select(`*, products(name), warehouses:warehouse_id(name), to_warehouses:to_warehouse_id(name)`)
+      .is("stock_transfer_id", null)
+      .order("created_at", { ascending: false })
+      .limit(100)
+    if (!error) setMovements((data || []).map(normalizeMovement))
+  }, [supabase])
+
+  const refreshStock = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("product_stock")
+      .select(`product_id, quantity, warehouse_id, warehouses(name)`)
+      .gt("quantity", 0)
+    if (error) return
+    const stockMap = new Map<string, StockByWarehouse[]>()
+    for (const s of data || []) {
+      const item: StockByWarehouse = {
+        warehouseId: s.warehouse_id,
+        warehouseName: (s.warehouses as unknown as { name: string } | null)?.name || "",
+        quantity: s.quantity,
+      }
+      if (!stockMap.has(s.product_id)) stockMap.set(s.product_id, [])
+      stockMap.get(s.product_id)!.push(item)
+    }
+    setProductStock(stockMap)
+    // Update total_stock on each product so stock badges stay accurate.
+    setProducts(prev => prev.map(p => {
+      const entries = stockMap.get(p.id) ?? []
+      const total = entries.reduce((sum, e) => sum + e.quantity, 0)
+      return { ...p, total_stock: total, totalStock: total }
+    }))
+  }, [supabase])
 
   const getProductById = useCallback((id: string) => {
     return products.find(p => p.id === id)
@@ -1259,6 +1299,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       refreshData,
+      refreshMovements,
+      refreshStock,
       addProduct,
       updateProduct,
       deleteProduct,

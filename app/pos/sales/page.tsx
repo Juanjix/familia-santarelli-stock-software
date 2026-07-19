@@ -33,6 +33,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { usePOS } from "@/lib/pos-context"
 import { useAuth } from "@/lib/auth-context"
+import { useInventory } from "@/lib/inventory-context"
 import { cn } from "@/lib/utils"
 import type { Sale, Employee, SaleStatus } from "@/lib/types"
 
@@ -270,6 +271,7 @@ function isStaleDraft(sale: Sale): boolean {
 
 export default function SalesHistoryPage() {
   const { fetchSales, voidSale, fetchEmployees } = usePOS()
+  const { refreshMovements, refreshStock } = useInventory()
   const { user } = useAuth()
 
   const [sales, setSales] = useState<Sale[]>([])
@@ -311,10 +313,27 @@ export default function SalesHistoryPage() {
 
   async function handleVoid(reason: string) {
     if (!saleToVoid || !user) return
+
+    // Optimistic update: mark as voided immediately so the UI responds instantly.
+    // Reverted below if the RPC fails.
+    setSales(prev => prev.map(s =>
+      s.id === saleToVoid.id ? { ...s, status: "voided" as SaleStatus } : s
+    ))
+    setSaleToVoid(null)
+
     const result = await voidSale(saleToVoid.id, reason)
+
     if (result.ok) {
-      setSaleToVoid(null)
-      load()
+      // Refresh only the slices affected by void_sale: movements (new
+      // sale_reversal entry) and stock (quantities restored to warehouse).
+      // Runs in parallel in the background — UI already shows the change.
+      Promise.all([refreshMovements(), refreshStock()])
+    } else {
+      // Revert optimistic update and re-open the dialog so the operator can retry.
+      setSales(prev => prev.map(s =>
+        s.id === saleToVoid.id ? { ...s, status: "confirmed" as SaleStatus } : s
+      ))
+      setSaleToVoid(saleToVoid)
     }
   }
 
