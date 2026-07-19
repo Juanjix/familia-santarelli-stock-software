@@ -21,6 +21,17 @@
 -- En Sprint B, register_inventory_movement() reemplazará ambos con soporte
 -- nativo para 'sale_reversal' y el parámetro p_sale_id.
 --
+-- ─── Orden LOCK → VALIDATE (no al revés) ────────────────────────────────────
+-- El Bloque 2 hace SELECT ... FOR UPDATE antes de validar el estado de la venta.
+-- Esto no es casual: si primero se valida el estado y después se adquiere el lock,
+-- existe una ventana donde otra transacción puede cambiar el estado entre ambas
+-- operaciones (TOCTOU — time of check vs time of use).
+-- Con FOR UPDATE, el lock y la lectura del estado son atómicos: PostgreSQL adquiere
+-- el lock exclusivo sobre la fila y devuelve el valor comprometido en una sola
+-- operación. La validación siempre opera sobre el estado ya bloqueado.
+-- Patrón correcto:  LOCK + READ → VALIDATE → MODIFY
+-- Patrón incorrecto: READ → VALIDATE → LOCK → MODIFY  ← ventana de race condition
+--
 -- ─── Análisis de locking ─────────────────────────────────────────────────────
 -- update_stock() opera sobre un único producto por llamada. Aplica FOR UPDATE
 -- explícito solo en exit y transfer; entry y adjustment usan lock implícito
@@ -35,11 +46,23 @@
 --   T2 (confirm Venta B = [P2, P1]): adquiere lock P2 (UPDATE implícito), espera P1
 --   → deadlock
 --
--- Solución: el loop itera sale_items con ORDER BY product_id ASC, id ASC.
--- Todas las transacciones que toquen product_stock adquirirán locks en el
--- mismo orden ascendente de product_id, eliminando el ciclo de dependencia.
--- confirm_sale() y update_stock() adquieren locks de a un producto por vez,
--- por lo que son compatibles con este orden sin modificación.
+-- El recurso real que se bloquea es la fila de product_stock, cuya clave lógica
+-- es (product_id, warehouse_id). El orden de adquisición debe seguir esa
+-- granularidad completa:
+--
+--   CONVENCIÓN DEL PROYECTO (aplica a toda función que itere múltiples productos):
+--   Ordenar siempre por (product_id ASC, warehouse_id ASC) antes de adquirir
+--   FOR UPDATE sobre product_stock. Incluir columna de desempate (id ASC) cuando
+--   la fuente de los ítems pueda tener duplicados.
+--
+-- En esta función, warehouse_id es uniforme por venta (v_sale.warehouse_id), por
+-- lo que no aparece en el ORDER BY de la query sobre sale_items — no es una columna
+-- de esa tabla. El ordenamiento determinístico se logra con product_id ASC, id ASC.
+-- Si en el futuro las ventas soportan múltiples depósitos, sale_items necesitará
+-- una columna warehouse_id y el ORDER BY deberá incluirla antes de id.
+--
+-- confirm_sale() y update_stock() adquieren locks de a un producto por vez;
+-- son compatibles con esta convención sin modificación.
 --
 -- ─── Consistencia de sale_items ──────────────────────────────────────────────
 -- La lectura de sale_items es un SELECT sin lock explícito bajo READ COMMITTED.
@@ -171,8 +194,12 @@ BEGIN
   END IF;
 
   -- ── Bloque 2: Validaciones de negocio ──────────────────────────────────────
-  -- FOR UPDATE en sales previene doble anulación concurrente y actúa como
-  -- guardián de sale_items (ver análisis de consistencia en el encabezado).
+  -- SELECT ... FOR UPDATE: adquiere el lock exclusivo sobre la fila de sales
+  -- y lee su estado comprometido en una sola operación atómica.
+  -- Las validaciones de NOT FOUND y status ocurren DESPUÉS del lock,
+  -- garantizando que no hay ventana entre leer el estado y bloquearlo.
+  -- Ver análisis LOCK → VALIDATE en el encabezado de este script.
+  -- Este lock también actúa como guardián de sale_items (ver encabezado).
   SELECT * INTO v_sale FROM sales WHERE id = p_sale_id FOR UPDATE;
 
   IF NOT FOUND THEN
@@ -192,15 +219,15 @@ BEGIN
   END IF;
 
   -- ── Bloque 3: Reversión de stock ───────────────────────────────────────────
-  -- ORDER BY product_id ASC, id ASC garantiza orden de adquisición de locks
-  -- idéntico al de cualquier transacción concurrente que itere los mismos
-  -- productos. Elimina la posibilidad de deadlock por ciclo de dependencia.
+  -- ORDER BY product_id ASC, id ASC: implementa la convención de ordenamiento
+  -- determinístico definida en el encabezado de este script.
+  -- La clave lógica del recurso bloqueado es (product_id, warehouse_id).
+  -- warehouse_id no aparece en el ORDER BY porque no es columna de sale_items
+  -- (es uniforme por venta: v_sale.warehouse_id). Si en el futuro las ventas
+  -- soportan múltiples depósitos, agregar warehouse_id al ORDER BY antes de id.
   --
   -- FOR UPDATE en product_stock serializa contra update_stock(exit/transfer)
-  -- concurrentes sobre el mismo producto y depósito.
-  --
-  -- Cubre ventas con productos en distintos depósitos: cada ítem usa
-  -- v_sale.warehouse_id (el depósito de la venta), no un depósito fijo.
+  -- concurrentes sobre el mismo (product_id, warehouse_id).
   --
   -- Sprint B: reemplazar este bloque por llamadas a register_inventory_movement(
   --   p_product_id, p_warehouse_id, p_quantity, 'sale_reversal',
@@ -209,14 +236,13 @@ BEGIN
   FOR v_item IN
     SELECT * FROM sale_items
     WHERE sale_id = p_sale_id
-    ORDER BY product_id ASC, id ASC
+    ORDER BY product_id ASC, id ASC  -- ver convención de locking en encabezado
   LOOP
 
-    -- Adquirir lock explícito antes del UPDATE.
-    -- Si update_stock(exit) ya tiene este lock, void_sale espera aquí.
-    -- El orden de adquisición (product_id ASC) coincide con el orden del loop,
-    -- por lo que dos void_sale concurrentes sobre ventas con productos en común
-    -- adquirirán los locks en el mismo orden y no formarán ciclos.
+    -- LOCK → MODIFY: FOR UPDATE adquiere el lock antes del UPDATE.
+    -- Si update_stock(exit) ya tiene este lock, void_sale espera aquí
+    -- en lugar de leer stock stale. El orden del loop garantiza que dos
+    -- transacciones concurrentes adquieran los locks en el mismo orden.
     SELECT quantity INTO v_current_stock
     FROM product_stock
     WHERE product_id  = v_item.product_id
