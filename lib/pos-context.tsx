@@ -71,7 +71,7 @@ interface POSContextValue {
   fetchEmployees: () => Promise<Employee[]>
   fetchWarehouses: () => Promise<Warehouse[]>
   fetchSales: (filters?: SaleFilters) => Promise<Sale[]>
-  voidSale: (saleId: string, voidedById: string, reason: string) => Promise<{ ok: boolean; error?: string }>
+  voidSale: (saleId: string, reason: string) => Promise<{ ok: boolean; error?: string }>
   findOrCreateCustomer: (firstName: string, lastName: string, phone?: string) => Promise<POSCustomer | null>
   searchCustomers: (query: string) => Promise<POSCustomer[]>
 }
@@ -357,13 +357,11 @@ export function POSProvider({ children }: { children: ReactNode }) {
 
   const voidSale = useCallback(async (
     saleId: string,
-    voidedById: string,
     reason: string,
   ): Promise<{ ok: boolean; error?: string }> => {
     const supabase = getSupabase()
     const { data, error } = await supabase.rpc("void_sale", {
       p_sale_id: saleId,
-      p_voided_by: voidedById,
       p_reason: reason,
     })
     if (error) return { ok: false, error: error.message }

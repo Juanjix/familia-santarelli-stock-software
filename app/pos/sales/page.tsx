@@ -311,8 +311,7 @@ export default function SalesHistoryPage() {
 
   async function handleVoid(reason: string) {
     if (!saleToVoid || !user) return
-    const voidedById = user.employee_id ?? user.id
-    const result = await voidSale(saleToVoid.id, voidedById, reason)
+    const result = await voidSale(saleToVoid.id, reason)
     if (result.ok) {
       setSaleToVoid(null)
       load()
