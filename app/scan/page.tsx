@@ -61,11 +61,15 @@ export default function ScanPage() {
     useInventory()
 
   const scannerRef = useRef<ProductScannerInputHandle>(null)
+  // Ref-based lock: prevents concurrent handleAction calls even if state batching
+  // delays the re-render that would disable the button. Same pattern as confirmingRef in POS.
+  const processingRef = useRef(false)
 
   const [foundProduct, setFoundProduct] = useState<Product | null>(null)
   const [stockByWarehouse, setStockByWarehouse] = useState<StockByWarehouse[]>([])
   const [success, setSuccess] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const [actionDialog, setActionDialog] = useState<ActionState>({ open: false, type: null })
   const [quantity, setQuantity] = useState("1")
@@ -101,6 +105,7 @@ export default function ScanPage() {
     setFromWarehouse("")
     setToWarehouse("")
     setNotes("")
+    setActionError(null)
   }
 
   const closeDialog = () => {
@@ -112,38 +117,47 @@ export default function ScanPage() {
 
   const handleAction = async () => {
     if (!foundProduct) return
+    // Ref-based guard: prevents double execution between click and re-render.
+    if (processingRef.current) return
+    processingRef.current = true
     setProcessing(true)
+    setActionError(null)
     try {
+      const qty = parseInt(quantity, 10)
+
       if (actionDialog.type === "transfer") {
-        if (!fromWarehouse || !toWarehouse || !quantity) return
-        await transferStock(
+        const ok = await transferStock(
           foundProduct.id,
           fromWarehouse,
           toWarehouse,
-          parseInt(quantity),
+          qty,
           notes || undefined,
         )
-        setSuccess(`Transferencia de ${quantity} ud. registrada`)
+        if (!ok) throw new Error("No se pudo registrar la transferencia. Revisá el stock disponible e intentá nuevamente.")
+        setSuccess(`Transferencia de ${qty} ud. registrada`)
       } else if (actionDialog.type === "in" || actionDialog.type === "out") {
-        if (!selectedWarehouse || !quantity) return
         await adjustStock(
           foundProduct.id,
           selectedWarehouse,
-          parseInt(quantity),
+          qty,
           actionDialog.type,
           notes || undefined,
         )
         setSuccess(
           actionDialog.type === "in"
-            ? `Entrada de ${quantity} ud. registrada`
-            : `Salida de ${quantity} ud. registrada`,
+            ? `Entrada de ${qty} ud. registrada`
+            : `Salida de ${qty} ud. registrada`,
         )
       }
+
+      // Solo se llega aquí si no se lanzó ninguna excepción.
       closeDialog()
-      // Refresh stock display
       const updated = await getStockByWarehouse(foundProduct.id)
       setStockByWarehouse(updated)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Ocurrió un error inesperado.")
     } finally {
+      processingRef.current = false
       setProcessing(false)
     }
   }
@@ -175,7 +189,7 @@ export default function ScanPage() {
           ref={scannerRef}
           products={products}
           onResolve={handleResolve}
-          onNotFound={() => setFoundProduct(null)}
+          onNotFound={() => { /* mantener el producto activo — el banner de "sin resultado" lo muestra ProductScannerInput */ }}
           placeholder="Escanear código de barras o ingresar SKU..."
         />
 
@@ -437,15 +451,23 @@ export default function ScanPage() {
             </div>
           </div>
 
+          {actionError && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {actionError}
+            </div>
+          )}
+
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>Cancelar</Button>
             <Button
               onClick={handleAction}
               disabled={
                 processing ||
+                parseInt(quantity, 10) < 1 ||
+                isNaN(parseInt(quantity, 10)) ||
                 (actionDialog.type === "transfer"
-                  ? !fromWarehouse || !toWarehouse || !quantity
-                  : !selectedWarehouse || !quantity)
+                  ? !fromWarehouse || !toWarehouse || fromWarehouse === toWarehouse
+                  : !selectedWarehouse)
               }
             >
               {processing ? "Procesando..." : "Confirmar"}
