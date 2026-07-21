@@ -74,38 +74,53 @@ function BarcodeCanvas({ code, className }: { code: string; className?: string }
   return <canvas ref={canvasRef} className={className} />
 }
 
-function LabelPreview({ product, scale = 6 }: { product: Product; scale?: number }) {
-  const code  = product.barcode ?? ""
-  const w     = LABEL_W_MM * scale
+function LabelPreview({ product }: { product: Product }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(4)
+
+  // Compute scale so the label always fills the container width exactly.
+  useEffect(() => {
+    if (!containerRef.current) return
+    const observer = new ResizeObserver(([entry]) => {
+      const px = entry.contentRect.width
+      if (px > 0) setScale(px / LABEL_W_MM)
+    })
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [])
+
   const h     = LABEL_H_MM * scale
   const leftW = 30 * scale
   const price = product.sell_price != null ? product.sell_price : ""
   const group = product.supplier?.price_group ?? ""
+  const code  = product.barcode ?? ""
 
   return (
-    <div style={{
-      width: `${w}px`, height: `${h}px`, display: "flex", alignItems: "stretch",
-      border: "1px solid #e2e8f0", background: "#ffffff",
-      boxSizing: "border-box", fontFamily: "Arial, sans-serif", overflow: "hidden",
-    }}>
+    <div ref={containerRef} style={{ width: "100%" }}>
       <div style={{
-        width: `${leftW}px`, flexShrink: 0, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        borderRight: "0.5px solid #ccc", padding: `0 ${2 * scale / 6}px`,
+        width: "100%", height: `${h}px`, display: "flex", alignItems: "stretch",
+        border: "1px solid #e2e8f0", background: "#ffffff",
+        boxSizing: "border-box", fontFamily: "Arial, sans-serif", overflow: "hidden",
       }}>
-        <div style={{ fontSize: `${8 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1 }}>{price}</div>
-        {group && (
-          <div style={{ fontSize: `${7 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1, marginTop: `${0.8 * scale / 6}px` }}>
-            {group}
-          </div>
-        )}
-      </div>
-      <div style={{
-        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        padding: `${1.5 * scale / 6}px ${5 * scale / 6}px ${1.5 * scale / 6}px ${2 * scale / 6}px`,
-        height: "100%", minWidth: 0, overflow: "hidden",
-      }}>
-        <BarcodeCanvas code={code} className="h-full w-auto" />
+        <div style={{
+          width: `${leftW}px`, flexShrink: 0, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          borderRight: "0.5px solid #ccc", padding: `0 ${2 * scale / 6}px`,
+        }}>
+          <div style={{ fontSize: `${8 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1 }}>{price}</div>
+          {group && (
+            <div style={{ fontSize: `${7 * scale / 6}px`, fontWeight: 700, color: "#000", lineHeight: 1, marginTop: `${0.8 * scale / 6}px` }}>
+              {group}
+            </div>
+          )}
+        </div>
+        <div style={{
+          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+          padding: `${1.5 * scale / 6}px ${5 * scale / 6}px ${1.5 * scale / 6}px ${2 * scale / 6}px`,
+          height: "100%", minWidth: 0, overflow: "hidden",
+        }}>
+          <BarcodeCanvas code={code} className="h-full w-auto" />
+        </div>
       </div>
     </div>
   )
@@ -367,7 +382,7 @@ export default function LabelsPage() {
             <DialogTitle>Vista previa — {LABEL_W_MM}×{LABEL_H_MM} mm</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">
-            {previewProduct && <LabelPreview product={previewProduct} scale={6} />}
+            {previewProduct && <LabelPreview product={previewProduct} />}
             <p className="text-xs text-muted-foreground text-center">
               Vista aproximada — la impresión real usa TSPL nativo (posición exacta en dots)
             </p>
