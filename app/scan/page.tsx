@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
@@ -42,7 +43,7 @@ import type { Product, StockByWarehouse } from "@/lib/types"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ActionType = "in" | "out" | "transfer"
+type ActionType = "in" | "out"
 
 interface ActionState {
   open: boolean
@@ -57,8 +58,9 @@ const fmtARS = (n: number) =>
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ScanPage() {
-  const { products, warehouses, getStockByWarehouse, adjustStock, transferStock, loading } =
+  const { products, warehouses, getStockByWarehouse, adjustStock, loading } =
     useInventory()
+  const router = useRouter()
 
   const scannerRef = useRef<ProductScannerInputHandle>(null)
   // Ref-based lock: prevents concurrent handleAction calls even if state batching
@@ -74,8 +76,6 @@ export default function ScanPage() {
   const [actionDialog, setActionDialog] = useState<ActionState>({ open: false, type: null })
   const [quantity, setQuantity] = useState("1")
   const [selectedWarehouse, setSelectedWarehouse] = useState("")
-  const [fromWarehouse, setFromWarehouse] = useState("")
-  const [toWarehouse, setToWarehouse] = useState("")
   const [notes, setNotes] = useState("")
 
   const activeWarehouses = warehouses.filter(w => w.is_active !== false)
@@ -102,8 +102,6 @@ export default function ScanPage() {
   const resetDialog = () => {
     setQuantity("1")
     setSelectedWarehouse("")
-    setFromWarehouse("")
-    setToWarehouse("")
     setNotes("")
     setActionError(null)
   }
@@ -125,30 +123,18 @@ export default function ScanPage() {
     try {
       const qty = parseInt(quantity, 10)
 
-      if (actionDialog.type === "transfer") {
-        const ok = await transferStock(
-          foundProduct.id,
-          fromWarehouse,
-          toWarehouse,
-          qty,
-          notes || undefined,
-        )
-        if (!ok) throw new Error("No se pudo registrar la transferencia. Revisá el stock disponible e intentá nuevamente.")
-        setSuccess(`Transferencia de ${qty} ud. registrada`)
-      } else if (actionDialog.type === "in" || actionDialog.type === "out") {
-        await adjustStock(
-          foundProduct.id,
-          selectedWarehouse,
-          qty,
-          actionDialog.type,
-          notes || undefined,
-        )
-        setSuccess(
-          actionDialog.type === "in"
-            ? `Entrada de ${qty} ud. registrada`
-            : `Salida de ${qty} ud. registrada`,
-        )
-      }
+      await adjustStock(
+        foundProduct.id,
+        selectedWarehouse,
+        qty,
+        actionDialog.type!,
+        notes || undefined,
+      )
+      setSuccess(
+        actionDialog.type === "in"
+          ? `Entrada de ${qty} ud. registrada`
+          : `Salida de ${qty} ud. registrada`,
+      )
 
       // Solo se llega aquí si no se lanzó ninguna excepción.
       closeDialog()
@@ -341,14 +327,14 @@ export default function ScanPage() {
                   variant="outline"
                   size="lg"
                   className="h-14 justify-start gap-3"
-                  onClick={() => setActionDialog({ open: true, type: "transfer" })}
+                  onClick={() => router.push("/transfers")}
                 >
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-500/10">
                     <ArrowLeftRight className="h-4 w-4 text-blue-600" />
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold">Transferir</p>
-                    <p className="text-xs text-muted-foreground">Mover entre depósitos</p>
+                    <p className="text-xs text-muted-foreground">Ir al módulo de transferencias</p>
                   </div>
                 </Button>
               </CardContent>
@@ -362,73 +348,39 @@ export default function ScanPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {actionDialog.type === "in"
-                ? "Entrada de stock"
-                : actionDialog.type === "out"
-                ? "Salida de stock"
-                : "Transferir stock"}
+              {actionDialog.type === "in" ? "Entrada de stock" : "Salida de stock"}
             </DialogTitle>
             <DialogDescription>{foundProduct?.name}</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-2">
-            {actionDialog.type === "transfer" ? (
-              <>
-                <div className="grid gap-2">
-                  <Label>Desde depósito</Label>
-                  <Select value={fromWarehouse} onValueChange={setFromWarehouse}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar origen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeWarehouses.map(w => {
-                        const s = stockByWarehouse.find(x => x.warehouseId === w.id)
-                        return (
-                          <SelectItem key={w.id} value={w.id}>
-                            {w.name}{s ? ` — ${s.quantity} ud.` : " — sin stock"}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                  {fromWarehouse && (() => {
-                    const s = stockByWarehouse.find(x => x.warehouseId === fromWarehouse)
-                    return s && s.quantity > 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        Disponible: <span className="font-medium text-foreground">{s.quantity} unidades</span>
-                      </p>
-                    ) : null
-                  })()}
-                </div>
-                <div className="grid gap-2">
-                  <Label>Hacia depósito</Label>
-                  <Select value={toWarehouse} onValueChange={setToWarehouse}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar destino" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeWarehouses.filter(w => w.id !== fromWarehouse).map(w => (
-                        <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            ) : (
-              <div className="grid gap-2">
-                <Label>Depósito</Label>
-                <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar depósito" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeWarehouses.map(w => (
-                      <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="grid gap-2">
+              <Label>Depósito</Label>
+              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar depósito" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeWarehouses.map(w => {
+                    const s = stockByWarehouse.find(x => x.warehouseId === w.id)
+                    return (
+                      <SelectItem key={w.id} value={w.id}>
+                        {w.name}{s !== undefined ? ` — ${s.quantity} ud.` : ""}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              {selectedWarehouse && actionDialog.type === "out" && (() => {
+                const s = stockByWarehouse.find(x => x.warehouseId === selectedWarehouse)
+                if (!s) return null
+                return (
+                  <p className={`text-xs ${s.quantity === 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                    Disponible: <span className="font-medium">{s.quantity} unidades</span>
+                  </p>
+                )
+              })()}
+            </div>
 
             <div className="grid gap-2">
               <Label>Cantidad</Label>
@@ -463,11 +415,9 @@ export default function ScanPage() {
               onClick={handleAction}
               disabled={
                 processing ||
+                !selectedWarehouse ||
                 parseInt(quantity, 10) < 1 ||
-                isNaN(parseInt(quantity, 10)) ||
-                (actionDialog.type === "transfer"
-                  ? !fromWarehouse || !toWarehouse || fromWarehouse === toWarehouse
-                  : !selectedWarehouse)
+                isNaN(parseInt(quantity, 10))
               }
             >
               {processing ? "Procesando..." : "Confirmar"}
