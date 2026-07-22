@@ -74,6 +74,7 @@ function ProductsPageInner() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null)
+  const [deleteResult, setDeleteResult] = useState<{ deactivated: boolean; error?: string } | null>(null)
   const [saving, setSaving] = useState(false)
   
   // Form state
@@ -424,11 +425,16 @@ function ProductsPageInner() {
   const handleDeleteProduct = async () => {
     if (!deletingProduct) return
     setSaving(true)
-    try {
-      await deleteProduct(deletingProduct.id)
+    setDeleteResult(null)
+    const result = await deleteProduct(deletingProduct.id)
+    setSaving(false)
+    if (result.deleted) {
       setDeletingProduct(null)
-    } finally {
-      setSaving(false)
+      setDeleteResult(null)
+    } else if (result.deactivated) {
+      setDeleteResult({ deactivated: true })
+    } else {
+      setDeleteResult({ deactivated: false, error: result.error })
     }
   }
 
@@ -566,22 +572,50 @@ function ProductsPageInner() {
       </div>
 
       {/* Delete Product Dialog */}
-      <Dialog open={!!deletingProduct} onOpenChange={() => setDeletingProduct(null)}>
+      <Dialog open={!!deletingProduct} onOpenChange={() => { setDeletingProduct(null); setDeleteResult(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar Producto</DialogTitle>
+            <DialogTitle>Eliminar producto</DialogTitle>
             <DialogDescription>
-              Esta accion no se puede deshacer. Se eliminara permanentemente el producto{" "}
-              <strong>{deletingProduct?.name}</strong> y todos sus datos asociados.
+              {deleteResult?.deactivated
+                ? null
+                : <>
+                    Si el producto no tiene historial será eliminado permanentemente.
+                    Si tiene movimientos, ventas o transferencias asociadas, se desactivará en su lugar para preservar el registro.
+                  </>
+              }
             </DialogDescription>
           </DialogHeader>
+
+          {deleteResult?.deactivated && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-amber-700 dark:text-amber-400 space-y-1">
+              <p className="font-medium">El producto fue desactivado, no eliminado.</p>
+              <p className="text-xs">
+                <strong>{deletingProduct?.name}</strong> tiene historial de movimientos, ventas o transferencias.
+                Eliminarlo borraría esos registros, así que fue marcado como inactivo.
+                Ya no aparecerá en el POS ni en búsquedas activas.
+              </p>
+            </div>
+          )}
+
+          {deleteResult?.error && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {deleteResult.error}
+            </div>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingProduct(null)}>
-              Cancelar
+            <Button
+              variant="outline"
+              onClick={() => { setDeletingProduct(null); setDeleteResult(null) }}
+            >
+              {deleteResult?.deactivated ? "Cerrar" : "Cancelar"}
             </Button>
-            <Button variant="destructive" onClick={handleDeleteProduct} disabled={saving}>
-              {saving ? "Eliminando..." : "Eliminar Producto"}
-            </Button>
+            {!deleteResult?.deactivated && (
+              <Button variant="destructive" onClick={handleDeleteProduct} disabled={saving}>
+                {saving ? "Procesando..." : "Eliminar producto"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

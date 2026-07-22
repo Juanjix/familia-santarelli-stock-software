@@ -80,7 +80,7 @@ interface InventoryContextType {
   refreshAfterInventoryChange: () => Promise<void>
   addProduct: (product: Partial<Product>) => Promise<Product | null>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
-  deleteProduct: (id: string) => Promise<void>
+  deleteProduct: (id: string) => Promise<{ deleted: boolean; deactivated: boolean; error?: string }>
   toggleProductStatus: (id: string) => Promise<void>
   adjustStock: (productId: string, warehouseId: string, quantity: number, type: "in" | "out" | "adjustment", notes?: string) => Promise<void>
   transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes?: string) => Promise<boolean>
@@ -422,15 +422,30 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     ))
   }, [supabase])
 
-  const deleteProduct = useCallback(async (id: string) => {
+  const deleteProduct = useCallback(async (id: string): Promise<{ deleted: boolean; deactivated: boolean; error?: string }> => {
     const { error } = await supabase.from("products").delete().eq("id", id)
-    
-    if (error) {
-      console.error("Error deleting product:", error)
-      return
+
+    if (!error) {
+      setProducts(prev => prev.filter(p => p.id !== id))
+      return { deleted: true, deactivated: false }
     }
-    
-    setProducts(prev => prev.filter(p => p.id !== id))
+
+    // FK violation — el producto tiene historial (movimientos, ventas, transferencias).
+    // Soft delete en lugar de eliminar para preservar integridad del audit trail.
+    if (error.code === "23503") {
+      const { error: updateError } = await supabase
+        .from("products")
+        .update({ is_active: false })
+        .eq("id", id)
+
+      if (!updateError) {
+        setProducts(prev => prev.map(p => p.id === id ? { ...p, is_active: false } : p))
+        return { deleted: false, deactivated: true }
+      }
+      return { deleted: false, deactivated: false, error: updateError.message }
+    }
+
+    return { deleted: false, deactivated: false, error: error.message }
   }, [supabase])
 
   const toggleProductStatus = useCallback(async (id: string) => {
