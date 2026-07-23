@@ -21,7 +21,9 @@ export function buildLabelBatch(
     `DIRECTION 0`,
     `REFERENCE 0, 0`,
     `OFFSET 0 mm`,
-    `SET TEAR OFF`,
+    // CALIBRATE: feeds the roll until the printer auto-detects the gap sensor,
+    // establishing an accurate reference position. Fixes label drift on 2nd+ labels.
+    `CALIBRATE`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
