@@ -1,5 +1,6 @@
 "use client"
 
+import { PermissionGuard } from "@/components/auth/permission-guard"
 import { useMemo } from "react"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
@@ -24,7 +25,7 @@ import {
   Boxes
 } from "lucide-react"
 
-export default function ReportsPage() {
+function ReportsPage() {
   const { products, warehouses, movements, getStockByWarehouse } = useInventory()
 
   const stats = useMemo(() => {
@@ -316,5 +317,13 @@ export default function ReportsPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function ReportsPageRoute() {
+  return (
+    <PermissionGuard module="reports">
+      <ReportsPage />
+    </PermissionGuard>
   )
 }

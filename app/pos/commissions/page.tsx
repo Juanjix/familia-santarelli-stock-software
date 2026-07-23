@@ -1,5 +1,6 @@
 "use client"
 
+import { PermissionGuard } from "@/components/auth/permission-guard"
 import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   ChevronLeft,
@@ -304,7 +305,7 @@ function MarkPaidDialog({
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
-export default function CommissionsPage() {
+function CommissionsPage() {
   const [commissions, setCommissions] = useState<CommissionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState(PERIOD_OPTIONS[1]?.value ?? "all")  // mes actual
@@ -543,5 +544,13 @@ export default function CommissionsPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function CommissionsPageRoute() {
+  return (
+    <PermissionGuard module="reports">
+      <CommissionsPage />
+    </PermissionGuard>
   )
 }

@@ -188,10 +188,12 @@ function SuccessScreen({
   result,
   printData,
   onNewSale,
+  canViewSalesHistory,
 }: {
   result: ConfirmSaleResult & { ok: true; sale_number: number; ticket_number: string }
   printData: PrintTicketData
   onNewSale: () => void
+  canViewSalesHistory: boolean
 }) {
   const router = useRouter()
   return (
@@ -224,10 +226,12 @@ function SuccessScreen({
       </Button>
 
       <div className="flex gap-3 w-full max-w-sm">
-        <Button variant="outline" className="flex-1" onClick={() => router.push("/pos/sales")}>
-          <History className="h-4 w-4 mr-2" />
-          Historial
-        </Button>
+        {canViewSalesHistory && (
+          <Button variant="outline" className="flex-1" onClick={() => router.push("/pos/sales")}>
+            <History className="h-4 w-4 mr-2" />
+            Historial
+          </Button>
+        )}
         <Button className="flex-1" onClick={onNewSale}>
           <Plus className="h-4 w-4 mr-2" />
           Nueva venta
@@ -494,7 +498,7 @@ export default function POSPage() {
   } = usePOS()
 
   const { products, getStockByWarehouse } = useInventory()
-  const { user } = useAuth()
+  const { user, canView } = useAuth()
 
   const [employees, setEmployees] = useState<Employee[]>([])
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
@@ -701,7 +705,7 @@ export default function POSPage() {
   handleUndoRef.current    = handleUndo
 
   if (successResult && successPrintData) {
-    return <SuccessScreen result={successResult} printData={successPrintData} onNewSale={handleNewSale} />
+    return <SuccessScreen result={successResult} printData={successPrintData} onNewSale={handleNewSale} canViewSalesHistory={canView("pos_sales")} />
   }
 
   // Setup screen — shown when seller or warehouse couldn't be auto-resolved
@@ -804,16 +808,22 @@ export default function POSPage() {
               cambiar
             </button>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/commissions")} className="text-xs text-muted-foreground">
-              <CircleDollarSign className="h-3.5 w-3.5 mr-1.5" />
-              Comisiones
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/sales")} className="text-xs text-muted-foreground">
-              <History className="h-3.5 w-3.5 mr-1.5" />
-              Historial
-            </Button>
-          </div>
+          {(canView("pos_sales") || canView("reports")) && (
+            <div className="flex items-center gap-1 shrink-0">
+              {canView("reports") && (
+                <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/commissions")} className="text-xs text-muted-foreground">
+                  <CircleDollarSign className="h-3.5 w-3.5 mr-1.5" />
+                  Comisiones
+                </Button>
+              )}
+              {canView("pos_sales") && (
+                <Button variant="ghost" size="sm" onClick={() => window.location.assign("/pos/sales")} className="text-xs text-muted-foreground">
+                  <History className="h-3.5 w-3.5 mr-1.5" />
+                  Historial
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Buscador / escáner de producto */}

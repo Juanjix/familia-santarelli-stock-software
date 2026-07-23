@@ -422,31 +422,38 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     ))
   }, [supabase])
 
-  const deleteProduct = useCallback(async (id: string): Promise<{ deleted: boolean; deactivated: boolean; error?: string }> => {
-    const { error } = await supabase.from("products").delete().eq("id", id)
-
-    if (!error) {
-      setProducts(prev => prev.filter(p => p.id !== id))
-      return { deleted: true, deactivated: false }
-    }
-
-    // FK violation — el producto tiene historial (movimientos, ventas, transferencias).
-    // Soft delete en lugar de eliminar para preservar integridad del audit trail.
-    if (error.code === "23503") {
-      const { error: updateError } = await supabase
-        .from("products")
-        .update({ is_active: false })
-        .eq("id", id)
-
-      if (!updateError) {
-        setProducts(prev => prev.map(p => p.id === id ? { ...p, is_active: false } : p))
-        return { deleted: false, deactivated: true }
-      }
-      return { deleted: false, deactivated: false, error: updateError.message }
-    }
-
-    return { deleted: false, deactivated: false, error: error.message }
+  // Fuente de verdad sobre cuándo un producto puede eliminarse físicamente.
+  // Agregar aquí cualquier nueva tabla que referencie products(id) sin ON DELETE CASCADE.
+  const getProductReferences = useCallback(async (id: string): Promise<boolean> => {
+    const [movementsRes, transfersRes, salesRes] = await Promise.all([
+      supabase.from("movements").select("id", { count: "exact", head: true }).eq("product_id", id),
+      supabase.from("stock_transfer_items").select("id", { count: "exact", head: true }).eq("product_id", id),
+      supabase.from("sale_items").select("id", { count: "exact", head: true }).eq("product_id", id),
+    ])
+    return (
+      (movementsRes.count ?? 0) > 0 ||
+      (transfersRes.count  ?? 0) > 0 ||
+      (salesRes.count      ?? 0) > 0
+    )
   }, [supabase])
+
+  const deleteProduct = useCallback(async (id: string): Promise<{ deleted: boolean; deactivated: boolean; error?: string }> => {
+    const hasHistory = await getProductReferences(id)
+
+    if (hasHistory) {
+      // El producto tiene trazabilidad — soft delete para preservar integridad del historial.
+      const { error } = await supabase.from("products").update({ is_active: false }).eq("id", id)
+      if (error) return { deleted: false, deactivated: false, error: error.message }
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, is_active: false } : p))
+      return { deleted: false, deactivated: true }
+    }
+
+    // Sin historial — hard delete seguro.
+    const { error } = await supabase.from("products").delete().eq("id", id)
+    if (error) return { deleted: false, deactivated: false, error: error.message }
+    setProducts(prev => prev.filter(p => p.id !== id))
+    return { deleted: true, deactivated: false }
+  }, [supabase, getProductReferences])
 
   const toggleProductStatus = useCallback(async (id: string) => {
     const product = products.find(p => p.id === id)

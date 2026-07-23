@@ -12,9 +12,10 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
+import { getRoleConfig } from "@/lib/role-config"
 
 const navOperacion = [
-  { name: "Panel",            href: "/",         icon: LayoutDashboard, module: "dashboard" },
+  { name: "Inicio",           href: "/",         icon: LayoutDashboard, module: "dashboard" },
   { name: "Escanear",         href: "/scan",      icon: ScanLine,        module: "scan" },
   { name: "Productos",        href: "/products",  icon: Package,         module: "products" },
   { name: "Inventario",       href: "/inventory", icon: Boxes,           module: "inventory" },
@@ -68,8 +69,13 @@ export function MobileSidebar() {
   const { isOpen, close } = useMobileSidebar()
   const { user, canView, signOut } = useAuth()
 
+  const dynamicNavOperacion = [
+    { ...navOperacion[0], name: getRoleConfig(user?.role?.slug).navLabel },
+    ...navOperacion.slice(1),
+  ]
+
   const groups = [
-    { label: "Operación",     items: navOperacion     },
+    { label: "Operación",     items: dynamicNavOperacion },
     { label: "Gestión",       items: navGestion       },
     { label: "Configuración", items: navConfiguracion },
   ]

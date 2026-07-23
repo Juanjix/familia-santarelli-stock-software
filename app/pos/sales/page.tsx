@@ -1,5 +1,6 @@
 "use client"
 
+import { PermissionGuard } from "@/components/auth/permission-guard"
 import { useState, useEffect, useCallback } from "react"
 import {
   Search,
@@ -85,6 +86,7 @@ function SaleDetailDialog({
   onClose: () => void
   onVoid: (sale: Sale) => void
 }) {
+  const { canDelete } = useAuth()
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -180,7 +182,7 @@ function SaleDetailDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cerrar</Button>
-          {sale.status === "confirmed" && (
+          {sale.status === "confirmed" && canDelete("pos_sales") && (
             <Button variant="destructive" onClick={() => { onClose(); onVoid(sale) }}>
               <Ban className="h-4 w-4 mr-2" />
               Anular venta
@@ -269,7 +271,7 @@ function isStaleDraft(sale: Sale): boolean {
   return ageMs > STALE_DRAFT_MINUTES * 60 * 1000
 }
 
-export default function SalesHistoryPage() {
+function SalesHistoryPage() {
   const { fetchSales, voidSale, fetchEmployees } = usePOS()
   const { refreshAfterInventoryChange } = useInventory()
   const { user } = useAuth()
@@ -499,5 +501,13 @@ export default function SalesHistoryPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function SalesHistoryPageRoute() {
+  return (
+    <PermissionGuard module="pos_sales">
+      <SalesHistoryPage />
+    </PermissionGuard>
   )
 }

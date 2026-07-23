@@ -24,10 +24,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
-
-const navPanel = [
-  { name: "Panel", href: "/", icon: LayoutDashboard, module: "dashboard" },
-]
+import { getRoleConfig } from "@/lib/role-config"
 
 const navVentas = [
   { name: "Punto de Venta",  href: "/pos",     icon: ShoppingCart, module: "pos" },
@@ -103,6 +100,9 @@ function NavGroup({
 export function Sidebar() {
   const pathname  = usePathname()
   const { user, signOut } = useAuth()
+  const navPanel = [
+    { name: getRoleConfig(user?.role?.slug).navLabel, href: "/", icon: LayoutDashboard, module: "dashboard" },
+  ]
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false
     return localStorage.getItem("sidebar-collapsed") === "true"
