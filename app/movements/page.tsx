@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { useInventory } from "@/lib/inventory-context"
 import { Header } from "@/components/dashboard/header"
 import { Input } from "@/components/ui/input"
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Search, ArrowLeftRight, ChevronDown, ChevronRight, ArrowRight } from "lucide-react"
+import { Search, ArrowLeftRight, ChevronDown, ChevronRight, ArrowRight, ChevronLeft } from "lucide-react"
 import { MovementBadge } from "@/components/movement-badge"
 import { MOVEMENT_TYPE_OPTIONS } from "@/lib/movement-types"
 import type { Movement, StockTransfer } from "@/lib/types"
@@ -120,11 +120,14 @@ function TransferExpanded({ transferId, fetchMovementsForTransfer }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 25
+
 export default function MovementsPage() {
   const { movements, stockTransfers, fetchMovementsForTransfer } = useInventory()
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [page, setPage] = useState(1)
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -151,6 +154,9 @@ export default function MovementsPage() {
     return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [movements, stockTransfers])
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPage(1) }, [search, typeFilter])
+
   const filteredRows = useMemo((): UnifiedRow[] => {
     return unifiedRows.filter(row => {
       if (row.kind === "movement") {
@@ -168,6 +174,12 @@ export default function MovementsPage() {
       }
     })
   }, [unifiedRows, search, typeFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredRows, page]
+  )
 
   return (
     <div className="flex flex-col h-full">
@@ -205,7 +217,7 @@ export default function MovementsPage() {
               <p className="font-medium">{search || typeFilter !== "all" ? "Sin resultados para ese filtro" : "Todavía no hay movimientos registrados"}</p>
               {(search || typeFilter !== "all") && <p className="text-sm mt-1">Probá cambiando el filtro o la búsqueda.</p>}
             </div>
-          ) : filteredRows.map(row => {
+          ) : pagedRows.map(row => {
             if (row.kind === "movement") {
               const m = row.item
               return (
@@ -303,7 +315,7 @@ export default function MovementsPage() {
                     {(search || typeFilter !== "all") && <p className="text-sm mt-1">Probá cambiando el filtro o la búsqueda.</p>}
                   </TableCell>
                 </TableRow>
-              ) : filteredRows.map(row => {
+              ) : pagedRows.map(row => {
                 if (row.kind === "movement") {
                   const m = row.item
                   return (
@@ -413,8 +425,35 @@ export default function MovementsPage() {
           </Table>
         </div>
 
-        <div className="mt-4 text-center text-sm text-muted-foreground">
-          Mostrando {filteredRows.length} evento{filteredRows.length !== 1 ? "s" : ""}
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <p className="text-sm text-muted-foreground">
+            {filteredRows.length === 0
+              ? "Sin eventos"
+              : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filteredRows.length)} de ${filteredRows.length} evento${filteredRows.length !== 1 ? "s" : ""}`}
+          </p>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground min-w-[80px] text-center">
+                Página {page} de {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </main>
     </div>
