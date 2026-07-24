@@ -17,14 +17,12 @@ export function buildLabelBatch(
 ): string {
   const cmds: string[] = [
     `SIZE ${profile.labelW} mm, ${profile.labelH} mm`,
-    `GAP ${profile.gap} mm, 0 mm`,
+    // GAP intentionally omitted — printer uses its own internally calibrated
+    // gap value (set via physical FEED-on-powerup calibration), which is more
+    // accurate than any hardcoded estimate.
     `DIRECTION 0`,
     `REFERENCE 0, 0`,
     `OFFSET 0 mm`,
-    // HOME: positions the head at the start of the current label using the
-    // SIZE+GAP already set, without feeding/consuming any labels.
-    // CALIBRATE was removed — it consumed 2-3 labels and misdetected the gap
-    // on die-cut flag labels, causing drift on subsequent prints.
     `HOME`,
   ]
 

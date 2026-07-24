@@ -6,7 +6,7 @@ export const TTP244PRO = {
   // Dimensiones de etiqueta y gap — en mm
   labelW: 80,
   labelH: 10,
-  gap:     3,
+  gap:     3.5,
 
   // Coordenadas de impresión — en dots (203 DPI)
   // Zona izquierda: precio y grupo de precio
