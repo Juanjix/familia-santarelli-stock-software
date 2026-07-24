@@ -23,8 +23,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Search, Printer, Tags, Barcode, Wifi, WifiOff, Loader2 } from "lucide-react"
-import { printLabels, isQZConnected, PrintError, type LabelItem } from "@/lib/printing"
+import { Search, Printer, Tags, Barcode, Wifi, WifiOff, Loader2, FlaskConical } from "lucide-react"
+import { printLabels, printSelfTest, isQZConnected, PrintError, type LabelItem } from "@/lib/printing"
 
 // ─── Dimensiones físicas (solo para el preview en pantalla) ─────────────────
 const LABEL_W_MM = 80
@@ -261,6 +261,28 @@ export default function LabelsPage() {
                 {selectedProducts.size} seleccionados · {getTotalLabels()} etiquetas
               </Badge>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              title="Diagnóstico de impresora — imprime parámetros internos (gap, velocidad, firmware)"
+              disabled={printing}
+              onClick={async () => {
+                setPrinting(true)
+                setQzError(null)
+                try {
+                  await printSelfTest()
+                  setQzStatus("connected")
+                } catch (e) {
+                  const msg = e instanceof PrintError ? e.message : (e instanceof Error ? e.message : String(e))
+                  setQzStatus("error")
+                  setQzError(msg)
+                } finally {
+                  setPrinting(false)
+                }
+              }}
+            >
+              <FlaskConical className="h-4 w-4" />
+            </Button>
             <Button
               onClick={() => handlePrint()}
               disabled={selectedProducts.size === 0 || printing}
