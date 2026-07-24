@@ -60,11 +60,23 @@ CREATE INDEX IF NOT EXISTS idx_sale_commissions_status
 ALTER TABLE exchange_tickets  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_commissions  ENABLE ROW LEVEL SECURITY;
 
--- Acceso solo a usuarios autenticados
-CREATE POLICY IF NOT EXISTS "exchange_tickets_auth"
-  ON exchange_tickets FOR ALL
-  TO authenticated USING (true) WITH CHECK (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'exchange_tickets' AND policyname = 'exchange_tickets_auth'
+  ) THEN
+    CREATE POLICY "exchange_tickets_auth"
+      ON exchange_tickets FOR ALL
+      TO authenticated USING (true) WITH CHECK (true);
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "sale_commissions_auth"
-  ON sale_commissions FOR ALL
-  TO authenticated USING (true) WITH CHECK (true);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'sale_commissions' AND policyname = 'sale_commissions_auth'
+  ) THEN
+    CREATE POLICY "sale_commissions_auth"
+      ON sale_commissions FOR ALL
+      TO authenticated USING (true) WITH CHECK (true);
+  END IF;
+END $$;
