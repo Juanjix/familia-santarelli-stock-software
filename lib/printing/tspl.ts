@@ -21,6 +21,12 @@ export function buildLabelBatch(
     `DIRECTION 0`,
     `REFERENCE 0, 0`,
     `OFFSET 0 mm`,
+    // CALIBRATE: feeds until the gap sensor fires, establishes exact label
+    // start position. Wastes 1-2 labels per batch but guarantees alignment
+    // on all subsequent labels regardless of initial roll position.
+    // Previously caused issues because SIZE/GAP were wrong — now correct
+    // (9.4mm + 3.81mm from printer SELFTEST).
+    `CALIBRATE`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
