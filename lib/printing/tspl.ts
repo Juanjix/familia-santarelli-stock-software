@@ -21,9 +21,11 @@ export function buildLabelBatch(
     `DIRECTION 0`,
     `REFERENCE 0, 0`,
     `OFFSET 0 mm`,
-    // CALIBRATE: feeds the roll until the printer auto-detects the gap sensor,
-    // establishing an accurate reference position. Fixes label drift on 2nd+ labels.
-    `CALIBRATE`,
+    // HOME: positions the head at the start of the current label using the
+    // SIZE+GAP already set, without feeding/consuming any labels.
+    // CALIBRATE was removed — it consumed 2-3 labels and misdetected the gap
+    // on die-cut flag labels, causing drift on subsequent prints.
+    `HOME`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
