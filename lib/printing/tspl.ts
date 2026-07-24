@@ -21,7 +21,6 @@ export function buildLabelBatch(
     `DIRECTION 0`,
     `REFERENCE 0, 0`,
     `OFFSET 0 mm`,
-    `HOME`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
