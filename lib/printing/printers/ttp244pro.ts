@@ -3,10 +3,13 @@ export const TTP244PRO = {
   /** Nombre parcial para buscar en Windows Print Spooler */
   nameQuery: "TTP-244",
 
-  // Dimensiones de etiqueta y gap — en mm
+  // Dimensiones verificadas contra SELFTEST de la impresora (FEED al encender)
+  // GAP:   0.15 inch = 3.81 mm  (valor real medido por la impresora)
+  // SIZE:  0.37 inch = 9.40 mm  (label height real, no 10mm)
+  // labelW: confirmado por spec del rollo EO0800101CR (080mm)
   labelW: 80,
-  labelH: 10,
-  gap:     3.5,
+  labelH: 9.4,
+  gap:    3.81,
 
   // Coordenadas de impresión — en dots (203 DPI)
   // Zona izquierda: precio y grupo de precio
