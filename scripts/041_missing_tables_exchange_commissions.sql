@@ -1,82 +1,77 @@
 -- ── 041: Tablas faltantes — exchange_tickets y sale_commissions ───────────────
 --
--- Estas tablas fueron creadas directamente en Supabase durante el desarrollo
--- sin script de migración. Este script las documenta y las crea si no existen,
--- asegurando que la base se pueda reconstruir desde cero correctamente.
---
--- exchange_tickets: ticket de crédito generado automáticamente al confirmar
---   una venta cuando el cliente tiene saldo a favor (distinto de coupons,
---   que son tickets de cambio por devolución de producto).
---
--- sale_commissions: comisión calculada por venta confirmada, vinculada al
---   empleado que realizó la venta. Se gestiona desde /pos/commissions.
+-- Verificado contra producción con information_schema + pg_catalog (2025-07).
+-- Reproduce el esquema exacto de la base existente.
 
 -- ── exchange_tickets ──────────────────────────────────────────────────────────
+-- Un ticket de crédito por venta (UNIQUE sale_id). Se genera automáticamente
+-- al confirmar una venta cuando el cliente tiene saldo a favor.
 
 CREATE TABLE IF NOT EXISTS exchange_tickets (
-  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  ticket_number  TEXT NOT NULL UNIQUE,
-  sale_id        UUID NOT NULL REFERENCES sales(id),
-  status         TEXT NOT NULL DEFAULT 'active'
-                   CHECK (status IN ('active', 'used', 'voided', 'expired')),
-  credit_amount  NUMERIC(12, 2) NOT NULL DEFAULT 0,
-  valid_until    TIMESTAMPTZ NOT NULL,
-  used_at        TIMESTAMPTZ,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_number TEXT        NOT NULL UNIQUE,
+  sale_id       UUID        NOT NULL UNIQUE REFERENCES sales(id),   -- NO ACTION on delete
+  status        TEXT        NOT NULL DEFAULT 'active'
+                              CHECK (status = ANY (ARRAY['active','used','voided','expired'])),
+  credit_amount NUMERIC(12,2) NOT NULL
+                              CHECK (credit_amount >= 0),
+  valid_until   DATE        NOT NULL,                               -- DATE, no TIMESTAMPTZ
+  used_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_exchange_tickets_sale_id
-  ON exchange_tickets (sale_id);
-
+-- Índice compuesto (status, valid_until) — permite filtrar tickets activos no vencidos
 CREATE INDEX IF NOT EXISTS idx_exchange_tickets_status
-  ON exchange_tickets (status);
+  ON exchange_tickets (status, valid_until);
 
 -- ── sale_commissions ──────────────────────────────────────────────────────────
+-- Una comisión por venta (UNIQUE sale_id). NO ACTION en ambas FK.
 
 CREATE TABLE IF NOT EXISTS sale_commissions (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  sale_id           UUID NOT NULL REFERENCES sales(id),
-  employee_id       UUID NOT NULL REFERENCES employees(id) ON DELETE SET NULL,
-  commission_pct    NUMERIC(5, 2) NOT NULL,
-  commission_amount NUMERIC(12, 2) NOT NULL,
-  basis_amount      NUMERIC(12, 2) NOT NULL,
-  status            TEXT NOT NULL DEFAULT 'pending'
-                      CHECK (status IN ('pending', 'paid', 'voided')),
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_id           UUID        NOT NULL UNIQUE REFERENCES sales(id),      -- NO ACTION
+  employee_id       UUID        NOT NULL REFERENCES employees(id),         -- NO ACTION
+  commission_pct    NUMERIC(5,2)  NOT NULL CHECK (commission_pct    >= 0),
+  commission_amount NUMERIC(12,2) NOT NULL CHECK (commission_amount >= 0),
+  basis_amount      NUMERIC(12,2) NOT NULL CHECK (basis_amount      >= 0),
+  status            TEXT        NOT NULL DEFAULT 'pending'
+                                  CHECK (status = ANY (ARRAY['pending','paid','voided'])),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_sale_commissions_sale_id
-  ON sale_commissions (sale_id);
+-- Índice compuesto (employee_id, status) — permite agrupar comisiones por empleado y estado
+CREATE INDEX IF NOT EXISTS idx_sale_commissions_employee
+  ON sale_commissions (employee_id, status);
 
-CREATE INDEX IF NOT EXISTS idx_sale_commissions_employee_id
-  ON sale_commissions (employee_id);
+-- ── RLS ───────────────────────────────────────────────────────────────────────
+-- Política: acceso a cualquier usuario autenticado (auth.uid() IS NOT NULL).
+-- Role: public (no authenticated) — coincide con el patrón del resto del schema.
 
-CREATE INDEX IF NOT EXISTS idx_sale_commissions_status
-  ON sale_commissions (status);
-
--- ── RLS (mismo patrón que el resto de las tablas operativas) ──────────────────
-
-ALTER TABLE exchange_tickets  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sale_commissions  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE exchange_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sale_commissions ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE tablename = 'exchange_tickets' AND policyname = 'exchange_tickets_auth'
+    WHERE tablename = 'exchange_tickets' AND policyname = 'auth_all'
   ) THEN
-    CREATE POLICY "exchange_tickets_auth"
+    CREATE POLICY "auth_all"
       ON exchange_tickets FOR ALL
-      TO authenticated USING (true) WITH CHECK (true);
+      TO public
+      USING (auth.uid() IS NOT NULL)
+      WITH CHECK (auth.uid() IS NOT NULL);
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE tablename = 'sale_commissions' AND policyname = 'sale_commissions_auth'
+    WHERE tablename = 'sale_commissions' AND policyname = 'auth_all'
   ) THEN
-    CREATE POLICY "sale_commissions_auth"
+    CREATE POLICY "auth_all"
       ON sale_commissions FOR ALL
-      TO authenticated USING (true) WITH CHECK (true);
+      TO public
+      USING (auth.uid() IS NOT NULL)
+      WITH CHECK (auth.uid() IS NOT NULL);
   END IF;
 END $$;
