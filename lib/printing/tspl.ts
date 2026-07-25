@@ -31,6 +31,7 @@ export function buildLabelBatch(
     `GAP ${profile.gap} mm, 0 mm`,
     `DIRECTION 0`,
     `OFFSET 0 mm`,
+    `SET TEAR OFF`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
