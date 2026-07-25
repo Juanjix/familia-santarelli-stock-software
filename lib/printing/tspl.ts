@@ -26,13 +26,7 @@ export function buildLabelBatch(
   profile: TTP244ProProfile,
   items: LabelItem[]
 ): string {
-  const cmds: string[] = [
-    `SIZE ${profile.labelW} mm, ${profile.labelH} mm`,
-    `GAP ${profile.gap} mm, 0 mm`,
-    `DIRECTION 0`,
-    `OFFSET 0 mm`,
-    `SET TEAR OFF`,
-  ]
+  const cmds: string[] = []
 
   for (const { barcode, price, group, quantity } of items) {
     for (let i = 0; i < quantity; i++) {
