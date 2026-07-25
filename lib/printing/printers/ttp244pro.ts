@@ -21,7 +21,7 @@ export const TTP244PRO = {
   // Zona derecha: código de barras CODE128
   barcodeX: 200,   // ~25 mm desde borde izq.
   barcodeY:   3,   // ~0.4 mm desde borde sup.
-  barcodeH:  36,   // ~4.5 mm de altura de barras (-20% de 45)
+  barcodeH:  30,   // ~3.75 mm de altura de barras
   barcodeN:   2,   // módulo mínimo (narrow bar width)
 } as const
 
