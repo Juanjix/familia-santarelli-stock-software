@@ -14,13 +14,13 @@ export const TTP244PRO = {
   // Coordenadas de impresión — en dots (203 DPI)
   // Zona izquierda: precio y grupo de precio
   priceX:    10,   // ~1.25 mm desde borde izq.
-  priceY:    10,   // ~1.25 mm desde borde sup. (+2 dots)
-  groupY:    38,   // ~4.75 mm desde borde sup. (+2 dots)
-  font:      "1",  // Fuente TSC interna 8×12 dots (más chica que "2" que era 12×20)
+  priceY:     8,   // ~1 mm desde borde sup.
+  groupY:    36,   // ~4.5 mm desde borde sup.
+  font:      "1",  // Fuente TSC interna 8×12 dots
 
   // Zona derecha: código de barras CODE128
   barcodeX: 200,   // ~25 mm desde borde izq.
-  barcodeY:   5,   // ~0.6 mm desde borde sup. (+2 dots)
+  barcodeY:   3,   // ~0.4 mm desde borde sup.
   barcodeH:  36,   // ~4.5 mm de altura de barras (-20% de 45)
   barcodeN:   2,   // módulo mínimo (narrow bar width)
 } as const
