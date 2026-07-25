@@ -16,12 +16,12 @@ export const TTP244PRO = {
   priceX:    10,   // ~1.25 mm desde borde izq.
   priceY:     8,   // ~1 mm desde borde sup.
   groupY:    36,   // ~4.5 mm desde borde sup.
-  font:      "2",  // Fuente TSC interna 12×20 dots
+  font:      "1",  // Fuente TSC interna 8×12 dots (más chica que "2" que era 12×20)
 
   // Zona derecha: código de barras CODE128
   barcodeX: 200,   // ~25 mm desde borde izq.
   barcodeY:   3,   // ~0.4 mm desde borde sup.
-  barcodeH:  45,   // ~5.6 mm de altura de barras
+  barcodeH:  36,   // ~4.5 mm de altura de barras (-20% de 45)
   barcodeN:   2,   // módulo mínimo (narrow bar width)
 } as const
 
