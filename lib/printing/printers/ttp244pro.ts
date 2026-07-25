@@ -9,7 +9,7 @@ export const TTP244PRO = {
   // labelW: confirmado por spec del rollo EO0800101CR (080mm)
   labelW: 80,
   labelH: 9.4,
-  gap:    3.81,
+  gap:    5,
 
   // Coordenadas de impresión — en dots (203 DPI)
   // Zona izquierda: precio y grupo de precio
