@@ -30,6 +30,7 @@ export function buildLabelBatch(
     `SIZE ${profile.labelW} mm, ${profile.labelH} mm`,
     `GAP ${profile.gap} mm, 0 mm`,
     `DIRECTION 0`,
+    `OFFSET 0 mm`,
   ]
 
   for (const { barcode, price, group, quantity } of items) {
