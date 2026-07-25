@@ -40,8 +40,8 @@ export function buildLabelBatch(
       if (price)   cmds.push(`TEXT ${profile.priceX}, ${profile.priceY}, "${profile.font}", 0, 1, 1, "${price}"`)
       if (group)   cmds.push(`TEXT ${profile.priceX}, ${profile.groupY}, "${profile.font}", 0, 1, 1, "${group}"`)
       if (barcode) cmds.push(`BARCODE ${profile.barcodeX}, ${profile.barcodeY}, "128", ${profile.barcodeH}, 1, 0, ${profile.barcodeN}, ${profile.barcodeN}, "${barcode}"`)
-      cmds.push(`PRINT 1, 1`)
-      cmds.push(`BACKFEED 20`)
+      cmds.push(`PRINT 1, 0`)
+      cmds.push(`BACKFEED 30`)
     }
   }
 
