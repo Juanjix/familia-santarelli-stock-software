@@ -52,5 +52,6 @@ export async function printLabels(items: LabelItem[]): Promise<void> {
   const config = qz.configs.create(printerName)
   const tspl   = buildLabelBatch(TTP244PRO, items)
 
+  console.log("[TSPL enviado]\n" + tspl)
   await qz.print(config, [{ type: "raw", format: "plain", data: tspl }])
 }
